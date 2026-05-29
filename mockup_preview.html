@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>SocialHeadmap — Layout Mockup v2</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f0f1a; font-family: -apple-system, 'Segoe UI', sans-serif;
+         padding: 40px 24px; display: flex; flex-direction: column; align-items: center; gap: 48px; }
+
+  h1 { color: #fff; font-size: 1.5rem; text-align: center; }
+  .subtitle { color: #666; font-size: 0.85rem; text-align: center; margin-top: 4px; }
+
+  .row { display: flex; gap: 28px; flex-wrap: wrap; justify-content: center; }
+
+  /* ── Phone Frame ── */
+  .phone-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .screen-label { color: #888; font-size: 0.72rem; letter-spacing: 1.5px; text-transform: uppercase; }
+  .phone { width: 360px; background: #111; border-radius: 44px; padding: 10px;
+           box-shadow: 0 0 0 1.5px #333, 0 0 0 3px #222, 0 24px 64px rgba(0,0,0,.7); }
+  .screen { background: #f2f2f7; border-radius: 36px; height: 760px;
+            display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Status Bar ── */
+  .sb { background: #fff; display: flex; justify-content: space-between; align-items: center;
+        padding: 14px 22px 8px; font-size: 12px; font-weight: 700; color: #1c1c1e; }
+  /* ── Nav Bar ── */
+  .nav { background: #fff; border-bottom: 1px solid #e5e5ea; padding: 10px 16px;
+         display: flex; align-items: center; gap: 10px; }
+  .nav-back { font-size: 22px; color: #1565c0; cursor: pointer; }
+  .nav-title { font-weight: 700; font-size: 16px; color: #1c1c1e; flex: 1; }
+
+  /* ── Search ── */
+  .search { padding: 8px 12px; background: #fff; border-bottom: 1px solid #e5e5ea; }
+  .search-inner { background: #f0f0f5; border-radius: 12px; padding: 8px 12px;
+                  display: flex; gap: 8px; align-items: center; }
+  .search-inner span { color: #8e8e93; font-size: 14px; }
+
+  /* ── Hero ── */
+  .hero { margin: 10px; border-radius: 18px; overflow: hidden; }
+  .hero-inner { background: linear-gradient(135deg,#0d47a1,#1565c0 60%,#1e88e5);
+                padding: 18px; color: #fff; position: relative; }
+  .hero-badge { font-size: 11px; opacity: .75; margin-bottom: 4px; }
+  .hero-title { font-size: 17px; font-weight: 800; margin-bottom: 10px; }
+  .hero-stats { display: flex; gap: 20px; }
+  .hero-stat strong { display: block; font-size: 20px; font-weight: 800; }
+  .hero-stat span { font-size: 10px; opacity: .75; }
+  .hero-deco { position: absolute; right: 12px; top: 10px; font-size: 52px; opacity: .18; }
+
+  /* ── Category Chips ── */
+  .chips { display: flex; gap: 7px; padding: 10px 10px 4px; overflow-x: auto; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { padding: 5px 13px; border-radius: 20px; font-size: 12px; font-weight: 700;
+          white-space: nowrap; flex-shrink: 0; }
+  .chip-on  { background: #1565c0; color: #fff; }
+  .chip-off { background: #fff; color: #3a3a3c; border: 1.5px solid #d1d1d6; }
+
+  /* ── Feed ── */
+  .feed { flex: 1; overflow-y: auto; padding: 6px 10px 10px; display: flex; flex-direction: column; gap: 10px; }
+  .feed::-webkit-scrollbar { display: none; }
+  .sec { font-size: 12px; font-weight: 800; color: #3a3a3c;
+         text-transform: uppercase; letter-spacing: .5px; padding: 2px 2px 0; }
+
+  /* ── Question Card ── */
+  .qcard { background: #fff; border-radius: 16px; overflow: hidden;
+           box-shadow: 0 1px 6px rgba(0,0,0,.08); }
+  .qbar { height: 3px; }
+  .qbody { padding: 11px 13px 11px; }
+  .qbadge { display: inline-block; padding: 3px 9px; border-radius: 20px;
+            font-size: 10px; font-weight: 800; margin-bottom: 7px; }
+  .qtitle { font-size: 13px; font-weight: 700; color: #1c1c1e; line-height: 1.35; margin-bottom: 9px; }
+  .qbtns { display: flex; gap: 7px; }
+  .btn-v { flex: 1; background: #1565c0; color: #fff; border: none; border-radius: 9px;
+           padding: 8px 4px; font-size: 11px; font-weight: 700; cursor: pointer; text-align: center; }
+  .btn-r { flex: 1; background: #f0f0f5; color: #1565c0; border: 1.5px solid #c5d5f0;
+           border-radius: 9px; padding: 8px 4px; font-size: 11px; font-weight: 700;
+           cursor: pointer; text-align: center; }
+  .btn-fp { width: 100%; background: #fffbeb; color: #92400e; border: 1.5px dashed #fbbf24;
+            border-radius: 9px; padding: 8px 4px; font-size: 11px; font-weight: 700;
+            cursor: pointer; text-align: center; margin-top: 7px; }
+  .qmap { background: linear-gradient(135deg,#dbeafe,#bfdbfe); height: 48px;
+          border-top: 1px solid #e5e5ea; display: flex; align-items: center;
+          justify-content: center; gap: 6px; font-size: 11px; font-weight: 700; color: #1d4ed8; }
+
+  /* colors */
+  .c-p  { background:#1565c0; } .bg-p  { background:#eff6ff; color:#1d4ed8; }
+  .c-s  { background:#2e7d32; } .bg-s  { background:#f0fdf4; color:#166534; }
+  .c-l  { background:#be185d; } .bg-l  { background:#fdf2f8; color:#9d174d; }
+  .c-b  { background:#b45309; } .bg-b  { background:#fffbeb; color:#92400e; }
+  .c-w  { background:#7c3aed; } .bg-w  { background:#f5f3ff; color:#5b21b6; }
+
+  /* ── Tab Bar ── */
+  .tabs { background: #fff; border-top: 1px solid #e5e5ea; padding: 6px 0 18px;
+          display: flex; }
+  .tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  .ti { font-size: 20px; }
+  .tl { font-size: 9px; font-weight: 600; }
+  .tab.on .tl { color: #1565c0; }
+  .tab:not(.on) .tl { color: #8e8e93; }
+
+  /* ── Fair Play Screen ── */
+  .fp-body { flex: 1; display: flex; flex-direction: column; align-items: center;
+             justify-content: center; padding: 32px 24px; text-align: center; }
+  .fp-icon { font-size: 68px; margin-bottom: 18px; }
+  .fp-title { font-size: 22px; font-weight: 800; color: #1c1c1e; margin-bottom: 10px; }
+  .fp-text { font-size: 13px; color: #636366; line-height: 1.6; margin-bottom: 28px; }
+  .fp-btn { background: #1565c0; color: #fff; border: none; border-radius: 14px;
+            padding: 15px 0; font-size: 15px; font-weight: 800; cursor: pointer; width: 100%; }
+  .fp-skip { margin-top: 14px; font-size: 12px; color: #aeaeb2; cursor: pointer; }
+
+  /* ── Vote Screen ── */
+  .vs-body { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 12px; }
+  .vs-body::-webkit-scrollbar { display: none; }
+  .vs-hero { background: linear-gradient(135deg,#1565c0,#0d47a1); border-radius: 18px;
+             padding: 18px; color: #fff; }
+  .vs-cat { font-size: 11px; opacity: .75; margin-bottom: 6px; }
+  .vs-q { font-size: 16px; font-weight: 800; line-height: 1.3; margin-bottom: 6px; }
+  .vs-hint { font-size: 11px; opacity: .65; }
+  .vs-opts { display: flex; flex-direction: column; gap: 8px; }
+  .vs-opt { background: #fff; border: 2px solid #e5e5ea; border-radius: 13px;
+            padding: 13px 14px; display: flex; align-items: center; gap: 10px;
+            cursor: pointer; }
+  .vs-opt:hover { border-color: #93c5fd; }
+  .vs-opt-ico { font-size: 24px; }
+  .vs-opt-txt { font-size: 14px; font-weight: 600; color: #1c1c1e; }
+  .vs-lock { text-align: center; font-size: 11px; color: #8e8e93; padding: 4px 0; }
+
+  /* ── Meine Antworten ── */
+  .ma-body { flex: 1; overflow-y: auto; padding: 10px 10px; display: flex; flex-direction: column; gap: 10px; }
+  .ma-body::-webkit-scrollbar { display: none; }
+  .ma-card { background: #fff; border-radius: 14px; overflow: hidden;
+             box-shadow: 0 1px 5px rgba(0,0,0,.07); }
+  .ma-top { padding: 11px 13px; }
+  .ma-badge-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .ma-vote { font-size: 11px; font-weight: 700; padding: 3px 9px;
+             border-radius: 20px; background: #dcfce7; color: #166534; }
+  .ma-q { font-size: 13px; font-weight: 700; color: #1c1c1e; line-height: 1.3; margin-bottom: 8px; }
+  .ma-btn { width: 100%; background: #1565c0; color: #fff; border: none; border-radius: 9px;
+            padding: 8px; font-size: 11px; font-weight: 700; cursor: pointer; }
+  .ma-empty { flex: 1; display: flex; flex-direction: column; align-items: center;
+              justify-content: center; color: #aeaeb2; gap: 10px; }
+
+  /* ── Karte Screen ── */
+  .map-screen { flex: 1; display: flex; flex-direction: column; background: #e8f4f8; }
+  .map-q-bar { background: #fff; padding: 10px 13px; border-bottom: 1px solid #e5e5ea; }
+  .map-q-label { font-size: 10px; color: #8e8e93; font-weight: 700; margin-bottom: 2px; }
+  .map-q-text { font-size: 12px; font-weight: 700; color: #1c1c1e; }
+  .map-area { flex: 1; display: flex; align-items: center; justify-content: center;
+              background: linear-gradient(160deg, #dbeafe 0%, #bfdbfe 100%); position: relative; }
+  .map-de { font-size: 90px; opacity: .25; }
+  .map-legend { position: absolute; bottom: 10px; left: 10px; background: #fff;
+                border-radius: 10px; padding: 8px 10px; font-size: 10px; }
+  .map-legend-row { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .map-bl-info { position: absolute; top: 10px; right: 10px; background: #ffffffee;
+                 border-radius: 10px; padding: 8px 10px; font-size: 10px; max-width: 120px; }
+  .map-bl-name { font-weight: 800; font-size: 11px; color: #1c1c1e; margin-bottom: 2px; }
+
+  /* ── Profil Screen ── */
+  .profil-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .profil-body::-webkit-scrollbar { display: none; }
+  .profil-card { background: #fff; border-radius: 14px; padding: 14px; }
+  .profil-title { font-size: 13px; font-weight: 800; color: #3a3a3c;
+                  text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
+  .profil-row { display: flex; justify-content: space-between; align-items: center;
+                padding: 8px 0; border-bottom: 1px solid #f2f2f7; }
+  .profil-row:last-child { border-bottom: none; }
+  .profil-label { font-size: 13px; color: #636366; }
+  .profil-val { font-size: 13px; font-weight: 700; color: #1c1c1e; }
+  .profil-val.blue { color: #1565c0; }
+  .profil-stat { text-align: center; padding: 14px; }
+  .profil-num { font-size: 36px; font-weight: 800; color: #1565c0; }
+  .profil-sub { font-size: 12px; color: #8e8e93; margin-top: 2px; }
+
+  /* ── Decision Notes ── */
+  .notes { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 16px;
+           padding: 24px; max-width: 1280px; width: 100%; color: #ccc; font-size: 13px; line-height: 1.7; }
+  .notes h2 { color: #fff; font-size: 1rem; margin-bottom: 12px; }
+  .notes ul { padding-left: 18px; }
+  .notes li { margin-bottom: 4px; }
+  .notes strong { color: #93c5fd; }
+</style>
+</head>
+<body>
+
+<div>
+  <h1>SocialHeadmap — Mockup v2</h1>
+  <p class="subtitle">5 Screens zur Prüfung · Karte immer fragebezogen · Fair-Play-Gate · "Meine Antworten" Tab</p>
+</div>
+
+<div class="row">
+
+<!-- ═══════════════════ SCREEN 1: HOME FEED ═══════════════════ -->
+<div class="phone-wrap">
+<div class="phone"><div class="screen">
+  <div class="sb"><span>9:41</span><span>●●● 🔋</span></div>
+  <div class="search">
+    <div class="search-inner">
+      <span>🔍</span>
+      <span style="color:#8e8e93;font-size:13px">Fragen oder Kategorien …</span>
+    </div>
+  </div>
+
+  <div class="hero">
+    <div class="hero-inner">
+      <div class="hero-deco">🗳</div>
+      <div class="hero-badge">SOCIALHEADMAP · DEINE STIMME</div>
+      <div class="hero-title">Was denkt Deutschland?</div>
+      <div class="hero-stats">
+        <div class="hero-stat"><strong>24</strong><span>Aktive Fragen</span></div>
+        <div class="hero-stat"><strong>5</strong><span>Kategorien</span></div>
+        <div class="hero-stat"><strong>3</strong><span>Beantwortet</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="chips">
+    <div class="chip chip-on">🔥 Alle</div>
+    <div class="chip chip-off">🏛 Politik</div>
+    <div class="chip chip-off">⚽ Sport</div>
+    <div class="chip chip-off">💅 Lifestyle</div>
+    <div class="chip chip-off">📚 Bildung</div>
+    <div class="chip chip-off">😄 Witzig</div>
+  </div>
+
+  <div class="feed">
+    <div class="sec">🔥 Top Themen</div>
+
+    <!-- Beantwortet → Ergebnisse sichtbar -->
+    <div class="qcard">
+      <div class="qbar c-p"></div>
+      <div class="qbody">
+        <div class="qbadge bg-p">🏛 Politik</div>
+        <div class="qtitle">Wehrpflicht wieder einführen?</div>
+        <div class="qbtns">
+          <div class="btn-v">▶ Abstimmen</div>
+          <div class="btn-r">📊 Ergebnisse ✓</div>
+        </div>
+      </div>
+      <div class="qmap">🗺 Karte zu dieser Frage · 1.248 Stimmen</div>
+    </div>
+
+    <!-- NOCH NICHT beantwortet → Fair Play -->
+    <div class="qcard">
+      <div class="qbar c-s"></div>
+      <div class="qbody">
+        <div class="qbadge bg-s">⚽ Sport</div>
+        <div class="qtitle">Wer wird nächste Saison Bundesligameister?</div>
+        <div class="qbtns">
+          <div class="btn-v">▶ Abstimmen</div>
+          <div class="btn-r" style="opacity:.45;cursor:default">🔒 Ergebnisse</div>
+        </div>
+        <div class="btn-fp">🤝 Fair Play — erst abstimmen um Karte zu sehen</div>
+      </div>
+    </div>
+
+    <!-- Beantwortet -->
+    <div class="qcard">
+      <div class="qbar c-b"></div>
+      <div class="qbody">
+        <div class="qbadge bg-b">📚 Bildung</div>
+        <div class="qtitle">Smartphones in Schulen verboten?</div>
+        <div class="qbtns">
+          <div class="btn-v">▶ Abstimmen</div>
+          <div class="btn-r">📊 Ergebnisse ✓</div>
+        </div>
+      </div>
+      <div class="qmap">🗺 Karte zu dieser Frage · 654 Stimmen</div>
+    </div>
+
+    <div class="qcard">
+      <div class="qbar c-w"></div>
+      <div class="qbody">
+        <div class="qbadge bg-w">😄 Witzig</div>
+        <div class="qtitle">Ist Ananas auf Pizza akzeptabel?</div>
+        <div class="qbtns">
+          <div class="btn-v">▶ Abstimmen</div>
+          <div class="btn-r" style="opacity:.45;cursor:default">🔒 Ergebnisse</div>
+        </div>
+        <div class="btn-fp">🤝 Fair Play — erst abstimmen</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab on"><span class="ti">🏠</span><span class="tl" style="color:#1565c0">Home</span></div>
+    <div class="tab"><span class="ti">🗺</span><span class="tl">Karte</span></div>
+    <div class="tab"><span class="ti">✅</span><span class="tl">Meine</span></div>
+    <div class="tab"><span class="ti">👤</span><span class="tl">Profil</span></div>
+  </div>
+</div></div>
+<div class="screen-label">Screen 1 · Home Feed</div>
+</div>
+
+<!-- ═══════════════════ SCREEN 2: FAIR PLAY ═══════════════════ -->
+<div class="phone-wrap">
+<div class="phone"><div class="screen">
+  <div class="sb"><span>9:41</span><span>●●● 🔋</span></div>
+  <div class="nav">
+    <span class="nav-back">←</span>
+    <span class="nav-title">Ergebnisse</span>
+  </div>
+  <div style="background:#fff;padding:10px 13px;border-bottom:1px solid #e5e5ea;">
+    <div style="font-size:10px;color:#8e8e93;font-weight:700;margin-bottom:2px;">⚽ SPORT</div>
+    <div style="font-size:12px;font-weight:700;color:#1c1c1e;">Wer wird nächste Saison Bundesligameister?</div>
+  </div>
+
+  <div class="fp-body">
+    <div class="fp-icon">🤝</div>
+    <div class="fp-title">Fair Play!</div>
+    <div class="fp-text">
+      Stimme zuerst ab, um die Ergebnisse zu sehen.<br><br>
+      So bleibt die Abstimmung fair — niemand stimmt nach dem Sehen der Karte strategisch ab.
+    </div>
+    <button class="fp-btn">▶ Jetzt abstimmen</button>
+    <div class="fp-skip">← Zurück zur Übersicht</div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab"><span class="ti">🏠</span><span class="tl">Home</span></div>
+    <div class="tab"><span class="ti">🗺</span><span class="tl">Karte</span></div>
+    <div class="tab"><span class="ti">✅</span><span class="tl">Meine</span></div>
+    <div class="tab"><span class="ti">👤</span><span class="tl">Profil</span></div>
+  </div>
+</div></div>
+<div class="screen-label">Screen 2 · Fair Play Gate</div>
+</div>
+
+<!-- ═══════════════════ SCREEN 3: ABSTIMMUNG ═══════════════════ -->
+<div class="phone-wrap">
+<div class="phone"><div class="screen">
+  <div class="sb"><span>9:41</span><span>●●● 🔋</span></div>
+  <div class="nav">
+    <span class="nav-back">←</span>
+    <span class="nav-title">Abstimmung</span>
+  </div>
+
+  <div class="vs-body">
+    <div class="vs-hero">
+      <div class="vs-cat">⚽ SPORT</div>
+      <div class="vs-q">Wer wird nächste Saison Bundesligameister?</div>
+      <div class="vs-hint">🔒 Anonym · Einmal pro Gerät · Kein Login nötig</div>
+    </div>
+
+    <div class="vs-opts">
+      <div class="vs-opt"><span class="vs-opt-ico">🔴</span><span class="vs-opt-txt">FC Bayern München</span></div>
+      <div class="vs-opt"><span class="vs-opt-ico">⚫</span><span class="vs-opt-txt">Borussia Dortmund</span></div>
+      <div class="vs-opt"><span class="vs-opt-ico">🔴</span><span class="vs-opt-txt">Bayer Leverkusen</span></div>
+      <div class="vs-opt"><span class="vs-opt-ico">⚪</span><span class="vs-opt-txt">RB Leipzig</span></div>
+      <div class="vs-opt"><span class="vs-opt-ico">🟡</span><span class="vs-opt-txt">VfB Stuttgart</span></div>
+    </div>
+
+    <div class="vs-lock">Deine Stimme ist anonym und wird nur deiner Region zugeordnet</div>
+
+    <div style="background:#f0f0f5;border-radius:13px;padding:12px;font-size:11px;color:#636366;line-height:1.5;">
+      <strong style="color:#1c1c1e;display:block;margin-bottom:4px;">Nach dem Abstimmen siehst du:</strong>
+      🗺 Interaktive Karte — wie hat dein Bundesland abgestimmt?<br>
+      📊 Altersgruppen-Auswertung<br>
+      🏆 Top 5 Regionen
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab"><span class="ti">🏠</span><span class="tl">Home</span></div>
+    <div class="tab"><span class="ti">🗺</span><span class="tl">Karte</span></div>
+    <div class="tab"><span class="ti">✅</span><span class="tl">Meine</span></div>
+    <div class="tab"><span class="ti">👤</span><span class="tl">Profil</span></div>
+  </div>
+</div></div>
+<div class="screen-label">Screen 3 · Abstimmung</div>
+</div>
+
+<!-- ═══════════════════ SCREEN 4: MEINE ANTWORTEN ═══════════════════ -->
+<div class="phone-wrap">
+<div class="phone"><div class="screen">
+  <div class="sb"><span>9:41</span><span>●●● 🔋</span></div>
+  <div class="nav" style="justify-content:space-between;">
+    <span class="nav-title">✅ Meine Antworten</span>
+    <span style="font-size:11px;color:#1565c0;font-weight:700;">3 Abstimmungen</span>
+  </div>
+
+  <div class="ma-body">
+    <div style="font-size:11px;color:#8e8e93;padding:2px 2px 4px;">
+      Nur für diese Fragen siehst du die Karte und Ergebnisse.
+    </div>
+
+    <div class="ma-card">
+      <div class="qbar c-p"></div>
+      <div class="ma-top">
+        <div class="ma-badge-row">
+          <div class="qbadge bg-p" style="margin:0">🏛 Politik</div>
+          <div class="ma-vote">✓ Deine Antwort: JA</div>
+        </div>
+        <div class="ma-q">Wehrpflicht wieder einführen?</div>
+        <button class="ma-btn">🗺 Karte zu dieser Frage öffnen</button>
+      </div>
+    </div>
+
+    <div class="ma-card">
+      <div class="qbar c-b"></div>
+      <div class="ma-top">
+        <div class="ma-badge-row">
+          <div class="qbadge bg-b" style="margin:0">📚 Bildung</div>
+          <div class="ma-vote">✓ Deine Antwort: NEIN</div>
+        </div>
+        <div class="ma-q">Smartphones in Schulen verboten?</div>
+        <button class="ma-btn">🗺 Karte zu dieser Frage öffnen</button>
+      </div>
+    </div>
+
+    <div class="ma-card">
+      <div class="qbar c-l"></div>
+      <div class="ma-top">
+        <div class="ma-badge-row">
+          <div class="qbadge bg-l" style="margin:0">💅 Lifestyle</div>
+          <div class="ma-vote">✓ Deine Antwort: BÜRO</div>
+        </div>
+        <div class="ma-q">Homeoffice oder Büro?</div>
+        <button class="ma-btn">🗺 Karte zu dieser Frage öffnen</button>
+      </div>
+    </div>
+
+    <div style="background:#fff;border-radius:14px;padding:14px;text-align:center;">
+      <div style="font-size:11px;color:#8e8e93;">Noch nicht beantwortet? Zurück zum</div>
+      <div style="font-size:13px;font-weight:700;color:#1565c0;margin-top:4px;cursor:pointer;">🏠 Home Feed →</div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab"><span class="ti">🏠</span><span class="tl">Home</span></div>
+    <div class="tab"><span class="ti">🗺</span><span class="tl">Karte</span></div>
+    <div class="tab on"><span class="ti">✅</span><span class="tl" style="color:#1565c0">Meine</span></div>
+    <div class="tab"><span class="ti">👤</span><span class="tl">Profil</span></div>
+  </div>
+</div></div>
+<div class="screen-label">Screen 4 · Meine Antworten</div>
+</div>
+
+<!-- ═══════════════════ SCREEN 5: KARTE (fragebezogen) ═══════════════════ -->
+<div class="phone-wrap">
+<div class="phone"><div class="screen">
+  <div class="sb"><span>9:41</span><span>●●● 🔋</span></div>
+  <div class="nav">
+    <span class="nav-back">←</span>
+    <span class="nav-title">Karte</span>
+    <span style="font-size:20px;color:#1565c0;cursor:pointer">⋯</span>
+  </div>
+
+  <div class="map-screen">
+    <div class="map-q-bar">
+      <div class="map-q-label">🏛 POLITIK · AKTIVE FRAGE</div>
+      <div class="map-q-text">Wehrpflicht wieder einführen?</div>
+    </div>
+
+    <div class="map-area">
+      <div class="map-de">🗺</div>
+
+      <div class="map-legend">
+        <div style="font-size:10px;font-weight:800;margin-bottom:4px;color:#1c1c1e">Legende</div>
+        <div class="map-legend-row"><span class="dot" style="background:#d1fae5"></span><span style="font-size:10px">Wenige Stimmen</span></div>
+        <div class="map-legend-row"><span class="dot" style="background:#93c5fd"></span><span style="font-size:10px">Mittel</span></div>
+        <div class="map-legend-row"><span class="dot" style="background:#1d4ed8"></span><span style="font-size:10px">Viele Stimmen</span></div>
+      </div>
+
+      <div class="map-bl-info">
+        <div class="map-bl-name">Bayern</div>
+        <div style="font-size:10px;color:#636366">248 Stimmen</div>
+        <div style="font-size:10px;color:#15803d;font-weight:700;margin-top:2px;">JA: 61% · NEIN: 39%</div>
+      </div>
+
+      <div style="position:absolute;bottom:60px;left:0;right:0;display:flex;justify-content:center;gap:8px;">
+        <div style="background:#ffffffee;border-radius:20px;padding:5px 12px;font-size:11px;font-weight:700;color:#1565c0;cursor:pointer;">Bundesländer</div>
+        <div style="background:#1565c0;border-radius:20px;padding:5px 12px;font-size:11px;font-weight:700;color:#fff;">Landkreise</div>
+      </div>
+    </div>
+
+    <div style="background:#fff;padding:10px 13px;border-top:1px solid #e5e5ea;display:flex;gap:8px;">
+      <div style="flex:1;text-align:center;">
+        <div style="font-size:16px;font-weight:800;color:#1565c0">1.248</div>
+        <div style="font-size:10px;color:#8e8e93">Gesamtstimmen</div>
+      </div>
+      <div style="flex:1;text-align:center;">
+        <div style="font-size:16px;font-weight:800;color:#15803d">58%</div>
+        <div style="font-size:10px;color:#8e8e93">JA-Anteil</div>
+      </div>
+      <div style="flex:1;text-align:center;">
+        <div style="font-size:16px;font-weight:800;color:#1c1c1e">12</div>
+        <div style="font-size:10px;color:#8e8e93">BL mit Quorum</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab"><span class="ti">🏠</span><span class="tl">Home</span></div>
+    <div class="tab on"><span class="ti">🗺</span><span class="tl" style="color:#1565c0">Karte</span></div>
+    <div class="tab"><span class="ti">✅</span><span class="tl">Meine</span></div>
+    <div class="tab"><span class="ti">👤</span><span class="tl">Profil</span></div>
+  </div>
+</div></div>
+<div class="screen-label">Screen 5 · Karte (fragebezogen)</div>
+</div>
+
+</div><!-- row end -->
+
+<!-- ═══ Notes ═══ -->
+<div class="notes">
+  <h2>Architektur-Entscheidungen (aus euren Antworten)</h2>
+  <ul>
+    <li><strong>Karte immer fragebezogen:</strong> Kein globaler Karten-Tab. Karte öffnet sich immer mit einer questionId — entweder direkt nach dem Abstimmen oder aus "Meine Antworten".</li>
+    <li><strong>Fair Play Gate:</strong> "Ergebnisse anzeigen" und Karte sind NUR für Fragen freigeschaltet, bei denen der User bereits abgestimmt hat. Gespeichert lokal via flutter_secure_storage.</li>
+    <li><strong>"Meine Antworten" Tab:</strong> Zeigt alle beantworteten Fragen mit der eigenen Antwort + direktem Karten-Link. Direkt eingebaut.</li>
+    <li><strong>Tab Bar:</strong> 🏠 Home | 🗺 Karte (deaktiviert wenn keine Antwort) | ✅ Meine Antworten | 👤 Profil (PLZ, Altersgruppe, Einstellungen)</li>
+  </ul>
+</div>
+
+<script>
+  // Prevent link clicks in mockup
+  document.querySelectorAll('button, .chip, .tab, .nav-back').forEach(el => {
+    el.addEventListener('click', e => e.preventDefault());
+  });
+</script>
+</body>
+</html>

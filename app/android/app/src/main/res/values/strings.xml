@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SocialHeadmap</string>
+
+    <!--
+        Facebook Login Konfiguration.
+        Echte Werte aus dem Meta Developer Portal eintragen:
+        https://developers.facebook.com/apps/
+        1. App erstellen → Einstellungen → Basis
+        2. App-ID kopieren → facebook_app_id und fb_login_protocol_scheme (fb + App-ID)
+        3. Client-Token → Einstellungen → Erweitert → Client-Token
+    -->
+    <string name="facebook_app_id">FACEBOOK_APP_ID_HIER_EINTRAGEN</string>
+    <string name="fb_login_protocol_scheme">fbFACEBOOK_APP_ID_HIER_EINTRAGEN</string>
+    <string name="facebook_client_token">FACEBOOK_CLIENT_TOKEN_HIER_EINTRAGEN</string>
+</resources>

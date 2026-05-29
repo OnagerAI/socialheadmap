@@ -1,0 +1,68 @@
+{
+  "project_info": {
+    "project_number": "373278842318",
+    "project_id": "gamodi",
+    "storage_bucket": "gamodi.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:373278842318:android:dfc453c9d02d46ca3cdf9f",
+        "android_client_info": {
+          "package_name": "app.gamodi.gamodi"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "373278842318-a2045c9ui63538e248sardb1etiojmbc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDEmSnw4r6RAd-xDBsXegfGtPqbZqxQEho"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "373278842318-a2045c9ui63538e248sardb1etiojmbc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:373278842318:android:d367c4663a3807513cdf9f",
+        "android_client_info": {
+          "package_name": "de.socialheadmap.socialheadmap"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "373278842318-a2045c9ui63538e248sardb1etiojmbc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDEmSnw4r6RAd-xDBsXegfGtPqbZqxQEho"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "373278842318-a2045c9ui63538e248sardb1etiojmbc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
