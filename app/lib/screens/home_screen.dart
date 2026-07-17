@@ -67,6 +67,7 @@ class _FeedTab extends StatefulWidget {
 
 class _FeedTabState extends State<_FeedTab> {
   List<Map<String, dynamic>> _questions = [];
+  List<Map<String, dynamic>> _top = [];
 
   /// question_id → eigene Antwort ('' wenn Antwort unbekannt).
   Map<String, String> _myAnswers = {};
@@ -103,12 +104,19 @@ class _FeedTabState extends State<_FeedTab> {
       _ageGroup = profile['age_group'];
 
       final questions = await ApiService.getActiveQuestions();
+      List<Map<String, dynamic>> top = [];
+      try {
+        top = await ApiService.getTopQuestions();
+      } catch (_) {
+        // Altes Backend ohne /top — Feed funktioniert trotzdem.
+      }
       await _syncMyVotes();
       final voted = await StorageService.getVotedQuestions();
 
       if (mounted) {
         setState(() {
           _questions = questions;
+          _top = top;
           _myAnswers = {
             for (final q in voted)
               q['id'] as String: (q['answer'] as String?) ?? '',
@@ -204,6 +212,25 @@ class _FeedTabState extends State<_FeedTab> {
     ));
   }
 
+  void _openVoteFor(Map<String, dynamic> q) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => VoteSheet(
+        title: q['title'] ?? '',
+        description: q['description'],
+        category: q['category'] ?? '',
+        answerType: q['answer_type'] ?? 'binary',
+        options:
+            q['options'] != null ? List<String>.from(q['options']) : null,
+        onAnswer: (a) {
+          Navigator.pop(context);
+          _onAnswer(q, a);
+        },
+      ),
+    );
+  }
+
   List<String> get _categories {
     final cats =
         _questions.map((q) => q['category'] as String? ?? '').toSet().toList()
@@ -278,6 +305,22 @@ class _FeedTabState extends State<_FeedTab> {
                           categoryCount: _categories.length - 1,
                         ),
                       ),
+                      if (_top.isNotEmpty &&
+                          _selectedCategory == 'Alle' &&
+                          _searchQuery.isEmpty)
+                        SliverToBoxAdapter(
+                          child: _TopTenStrip(
+                            top: _top,
+                            myAnswers: _myAnswers,
+                            onTap: (q) {
+                              if (_myAnswers.containsKey(q['id'])) {
+                                _openMap(q);
+                              } else {
+                                _openVoteFor(q);
+                              }
+                            },
+                          ),
+                        ),
                       SliverToBoxAdapter(
                         child: _CategoryBar(
                           categories: _categories,
@@ -435,6 +478,158 @@ class _Stat extends StatelessWidget {
                 color: Colors.white.withOpacity(0.75),
                 fontWeight: FontWeight.w500)),
       ],
+    );
+  }
+}
+
+// ── Top-10-Strip ────────────────────────────────────────────────────────────
+
+class _TopTenStrip extends StatelessWidget {
+  final List<Map<String, dynamic>> top;
+  final Map<String, String> myAnswers;
+  final void Function(Map<String, dynamic> question) onTap;
+
+  const _TopTenStrip({
+    required this.top,
+    required this.myAnswers,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+              ShmTheme.gapL, ShmTheme.gapM, ShmTheme.gapL, ShmTheme.gapS),
+          child: Row(
+            children: [
+              Icon(Icons.local_fire_department,
+                  size: 18, color: scheme.primary),
+              const SizedBox(width: 6),
+              Text('Top 10 · Was Deutschland bewegt',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontSize: 15)),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 118,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: ShmTheme.gapL),
+            itemCount: top.length,
+            separatorBuilder: (_, __) => const SizedBox(width: ShmTheme.gapS + 2),
+            itemBuilder: (ctx, i) {
+              final entry = top[i];
+              final q = entry['question'] as Map<String, dynamic>;
+              final rank = entry['rank'] as int? ?? i + 1;
+              final votes7d = entry['votes_7d'] as int? ?? 0;
+              final voted = myAnswers.containsKey(q['id']);
+              return _TopCard(
+                rank: rank,
+                title: q['title'] ?? '',
+                category: q['category'] ?? '',
+                votes7d: votes7d,
+                voted: voted,
+                onTap: () => onTap(q),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TopCard extends StatelessWidget {
+  final int rank;
+  final String title;
+  final String category;
+  final int votes7d;
+  final bool voted;
+  final VoidCallback onTap;
+
+  const _TopCard({
+    required this.rank,
+    required this.title,
+    required this.category,
+    required this.votes7d,
+    required this.voted,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final shm = context.shm;
+    final catColor = ShmTheme.categoryColor(category);
+    return SizedBox(
+      width: 220,
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(ShmTheme.gapM),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      '#$rank',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: rank <= 3
+                            ? const Color(0xFFC9A227)
+                            : scheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: ShmTheme.gapS),
+                    Expanded(
+                      child: Text(
+                        category.isNotEmpty ? category : 'Allgemein',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: catColor,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                    if (voted)
+                      Icon(Icons.check_circle, size: 15, color: shm.yes),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        height: 1.3),
+                  ),
+                ),
+                Text(
+                  '$votes7d Stimmen diese Woche',
+                  style: TextStyle(
+                      fontSize: 11.5, color: scheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

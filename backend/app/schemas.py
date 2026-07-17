@@ -81,6 +81,17 @@ class QuestionCreate(BaseModel):
     category: str
     answer_type: AnswerType
     options: Optional[List[str]] = None
+    starts_at: Optional[str] = None   # ISO-8601, UTC
+    ends_at: Optional[str] = None
+
+
+class QuestionPatch(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    options: Optional[List[str]] = None
+    starts_at: Optional[str] = None   # "" löscht das Datum
+    ends_at: Optional[str] = None
 
 
 class QuestionOut(BaseModel):
@@ -92,6 +103,15 @@ class QuestionOut(BaseModel):
     options: Optional[List[str]]
     status: str
     created_at: str
+    starts_at: Optional[str] = None
+    ends_at: Optional[str] = None
+
+
+class TopQuestionOut(BaseModel):
+    rank: int
+    question: QuestionOut
+    votes_7d: int
+    total_votes: int
 
 
 # Stats

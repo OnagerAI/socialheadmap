@@ -61,22 +61,12 @@ deploy_android() {
 # ── Backend Deploy ────────────────────────────────────────────────────────────
 deploy_backend() {
   echo "=== Backend → EC2 ==="
-  scp "$BACKEND_DIR/app/schemas.py"            "$EC2:/tmp/shm_schemas.py"
-  scp "$BACKEND_DIR/app/routers/stats.py"      "$EC2:/tmp/shm_stats.py"
-  scp "$BACKEND_DIR/app/routers/votes.py"      "$EC2:/tmp/shm_votes.py"
-  scp "$BACKEND_DIR/app/routers/auth.py"       "$EC2:/tmp/shm_auth.py"
-  scp "$BACKEND_DIR/app/routers/questions.py"  "$EC2:/tmp/shm_questions.py"
-  scp "$BACKEND_DIR/app/main.py"               "$EC2:/tmp/shm_main.py"
-  scp "$BACKEND_DIR/app/admin.html"            "$EC2:/tmp/shm_admin.html"
+  # Ganzes app-Paket kopieren — Einzeldatei-Listen haben schon Dateien vergessen
+  # (plz_mapping.py, database.py). Ausgenommen: große Daten-Assets bleiben im Image.
+  rsync -az --exclude "__pycache__" "$BACKEND_DIR/app/" "$EC2:/tmp/shm_app/"
 
   ssh "$EC2" "
-    sudo docker cp /tmp/shm_schemas.py    socialheadmap-api:/app/app/schemas.py
-    sudo docker cp /tmp/shm_stats.py      socialheadmap-api:/app/app/routers/stats.py
-    sudo docker cp /tmp/shm_votes.py      socialheadmap-api:/app/app/routers/votes.py
-    sudo docker cp /tmp/shm_auth.py       socialheadmap-api:/app/app/routers/auth.py
-    sudo docker cp /tmp/shm_questions.py  socialheadmap-api:/app/app/routers/questions.py
-    sudo docker cp /tmp/shm_main.py       socialheadmap-api:/app/app/main.py
-    sudo docker cp /tmp/shm_admin.html    socialheadmap-api:/app/app/admin.html
+    sudo docker cp /tmp/shm_app/. socialheadmap-api:/app/app/
     sudo docker restart socialheadmap-api
     sleep 3
     sudo docker logs socialheadmap-api --tail=4

@@ -110,6 +110,16 @@ class ApiService {
     return List<Map<String, dynamic>>.from(_decode(res) as List);
   }
 
+  /// Top-Fragen nach Beteiligung der letzten 7 Tage.
+  static Future<List<Map<String, dynamic>>> getTopQuestions(
+      {int limit = 10}) async {
+    final res = await http
+        .get(_uri('/questions/top', {'limit': '$limit'}))
+        .timeout(_timeout);
+    if (res.statusCode != 200) _fail(res, 'questions_load_failed');
+    return List<Map<String, dynamic>>.from(_decode(res) as List);
+  }
+
   static Future<Map<String, dynamic>> submitVote({
     required String deviceToken,
     required String questionId,

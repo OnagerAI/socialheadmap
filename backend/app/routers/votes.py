@@ -22,13 +22,22 @@ def submit_vote(req: VoteRequest):
         if not row:
             raise HTTPException(status_code=401, detail="device_not_registered")
 
-        # Frage muss aktiv sein
+        # Frage muss aktiv sein und im Zeitfenster liegen
         q = conn.execute(
-            "SELECT id, answer_type, options FROM questions WHERE id = ? AND status = 'active'",
+            "SELECT id, answer_type, options FROM questions "
+            "WHERE id = ? AND status = 'active' "
+            "AND (starts_at IS NULL OR starts_at <= datetime('now'))",
             (req.question_id,),
         ).fetchone()
         if not q:
             raise HTTPException(status_code=404, detail="question_not_found")
+        closed = conn.execute(
+            "SELECT 1 FROM questions WHERE id = ? "
+            "AND ends_at IS NOT NULL AND ends_at <= datetime('now')",
+            (req.question_id,),
+        ).fetchone()
+        if closed:
+            raise HTTPException(status_code=410, detail="question_closed")
 
         # Antwort validieren
         _validate_answer(req.answer, q)
