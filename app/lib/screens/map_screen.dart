@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/api_service.dart';
+import '../services/storage_service.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/stats_widgets.dart';
@@ -29,6 +30,7 @@ class _MapScreenState extends State<MapScreen> {
   Map<String, dynamic>? _geoJson;
   Map<String, Map<String, dynamic>>? _landkreisData;
   Map<String, int> _bundeslandVotes = {};
+  String _deviceToken = '';
   bool _loading = true;
   Object? _error;
 
@@ -61,6 +63,7 @@ class _MapScreenState extends State<MapScreen> {
       _error = null;
     });
     try {
+      _deviceToken = await StorageService.getOrCreateDeviceToken();
       await Future.wait([_loadGeoJson(), _loadSnapshot(), _loadBundeslandData()]);
     } catch (e) {
       if (mounted) {
@@ -83,7 +86,8 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _loadSnapshot() async {
-    final data = await ApiService.getMapSnapshot(widget.questionId);
+    final data =
+        await ApiService.getMapSnapshot(widget.questionId, _deviceToken);
     final landkreise = (data['landkreise'] as List<dynamic>?) ?? [];
     final map = <String, Map<String, dynamic>>{};
     for (final lk in landkreise) {
@@ -100,7 +104,8 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _loadBundeslandData() async {
     try {
-      final data = await ApiService.getBundeslandSnapshot(widget.questionId);
+      final data = await ApiService.getBundeslandSnapshot(
+          widget.questionId, _deviceToken);
       final bls = (data['bundeslaender'] as List<dynamic>?) ?? [];
       final map = <String, int>{};
       for (final bl in bls) {
@@ -509,7 +514,9 @@ class _MapScreenState extends State<MapScreen> {
             interactionOptions: const InteractionOptions(
               flags: InteractiveFlag.pinchZoom |
                   InteractiveFlag.scrollWheelZoom |
-                  InteractiveFlag.doubleTapZoom,
+                  InteractiveFlag.doubleTapZoom |
+                  InteractiveFlag.drag |
+                  InteractiveFlag.flingAnimation,
             ),
             cameraConstraint: CameraConstraint.containCenter(
               bounds: LatLngBounds(
@@ -636,7 +643,7 @@ class _MapLegend extends StatelessWidget {
 
     final rows = isDetail
         ? [
-            (shm.noQuorum, 'Unter 10 Stimmen'),
+            (shm.noQuorum, 'Keine Stimmen'),
             (shm.yesStrong, 'Mehrheit Ja'),
             (shm.noStrong, 'Mehrheit Nein'),
           ]
@@ -765,7 +772,7 @@ class _LandkreisBottomSheet extends StatelessWidget {
                 borderRadius: BorderRadius.circular(ShmTheme.radiusM),
               ),
               child: Text(
-                'Kein Quorum erreicht — Ergebnisse werden erst ab 10 Stimmen angezeigt.',
+                'Für diesen Landkreis liegen noch keine auswertbaren Ergebnisse vor.',
                 style: TextStyle(
                     color: scheme.onTertiaryContainer, fontSize: 13),
               ),
@@ -857,7 +864,7 @@ class _QuestionStatsSheet extends StatelessWidget {
           if (quorumVotes < totalVotes) ...[
             const SizedBox(height: ShmTheme.gapS),
             Text(
-              'Verteilung basiert auf $quorumVotes Stimmen aus Landkreisen mit Quorum (≥ 10).',
+              'Verteilung basiert auf $quorumVotes auswertbaren Stimmen.',
               style: TextStyle(
                   fontSize: 11.5, color: scheme.onSurfaceVariant),
             ),

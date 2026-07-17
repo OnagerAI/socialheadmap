@@ -39,6 +39,8 @@ String errorMessage(Object error) {
     'device_not_registered' =>
       'Gerät nicht registriert. Bitte melde dich neu an.',
     'question_not_found' => 'Diese Frage ist nicht mehr aktiv.',
+    'vote_required' =>
+      'Stimme zuerst selbst ab — danach siehst du die Ergebnisse.',
     'token_already_used' =>
       'Dieser Login-Link wurde bereits verwendet. Bitte fordere einen neuen an.',
     'token_expired' =>

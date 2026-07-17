@@ -31,6 +31,7 @@ JWT_ALGORITHM   = "HS256"
 JWT_EXPIRY_DAYS = 30
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+APPLE_BUNDLE_ID  = os.getenv("APPLE_BUNDLE_ID", "de.socialheadmap.socialheadmap")
 APP_BASE_URL     = os.getenv("APP_BASE_URL", "https://shm.13-61-179-136.nip.io")
 
 SMTP_HOST  = os.getenv("SMTP_HOST", "")
@@ -160,6 +161,46 @@ async def _verify_google_token(id_token: str) -> str:
     return sub
 
 
+_apple_jwks_cache: dict = {"keys": None, "fetched": 0.0}
+
+
+async def _verify_apple_token(identity_token: str) -> str:
+    """Sign-in-with-Apple: identityToken (JWT) gegen Apples JWKS verifizieren."""
+    import time as _time
+
+    if (not _apple_jwks_cache["keys"]
+            or _time.time() - _apple_jwks_cache["fetched"] > 86400):
+        async with httpx.AsyncClient() as client:
+            resp = await client.get("https://appleid.apple.com/auth/keys",
+                                    timeout=10)
+        if resp.status_code != 200:
+            raise HTTPException(503, "apple_keys_unavailable")
+        _apple_jwks_cache["keys"] = resp.json().get("keys", [])
+        _apple_jwks_cache["fetched"] = _time.time()
+
+    try:
+        header = jwt.get_unverified_header(identity_token)
+        key = next(k for k in _apple_jwks_cache["keys"]
+                   if k.get("kid") == header.get("kid"))
+    except StopIteration:
+        raise HTTPException(401, "apple_token_unknown_key")
+    except JWTError:
+        raise HTTPException(401, "apple_token_invalid")
+
+    try:
+        payload = jwt.decode(
+            identity_token, key, algorithms=["RS256"],
+            audience=APPLE_BUNDLE_ID, issuer="https://appleid.apple.com",
+        )
+    except JWTError:
+        raise HTTPException(401, "apple_token_invalid")
+
+    sub = payload.get("sub")
+    if not sub:
+        raise HTTPException(401, "apple_token_no_sub")
+    return sub
+
+
 async def _verify_facebook_token(access_token: str) -> str:
     async with httpx.AsyncClient() as client:
         resp = await client.get(
@@ -224,6 +265,8 @@ async def social_login(req: SocialLoginRequest):
     """Google oder Facebook OAuth-Token verifizieren, Account anlegen/finden, JWT ausgeben."""
     if req.provider == "google":
         provider_uid = await _verify_google_token(req.access_token)
+    elif req.provider == "apple":
+        provider_uid = await _verify_apple_token(req.access_token)
     elif req.provider == "facebook":
         provider_uid = await _verify_facebook_token(req.access_token)
     else:

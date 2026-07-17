@@ -1,7 +1,10 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../constants.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
@@ -87,6 +90,34 @@ class _AuthScreenState extends State<AuthScreen> {
         provider: data['provider'] as String,
       );
       _goHome();
+    } catch (e) {
+      setState(() => _loading = false);
+      if (mounted) showShmSnack(context, errorMessage(e), error: true);
+    }
+  }
+
+  Future<void> _signInWithApple() async {
+    setState(() => _loading = true);
+    try {
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: const [], // bewusst keine Scopes — wir brauchen weder Name noch E-Mail
+      );
+      final idToken = credential.identityToken;
+      if (idToken == null) throw Exception('apple_no_id_token');
+      final data = await ApiService.socialLogin('apple', idToken);
+      await AuthService.saveAuth(
+        jwt: data['jwt'] as String,
+        username: data['username'] as String,
+        provider: data['provider'] as String,
+      );
+      _goHome();
+    } on SignInWithAppleAuthorizationException catch (e) {
+      setState(() => _loading = false);
+      if (e.code == AuthorizationErrorCode.canceled) return;
+      if (mounted) {
+        showShmSnack(context, 'Apple-Anmeldung fehlgeschlagen. Bitte erneut versuchen.',
+            error: true);
+      }
     } catch (e) {
       setState(() => _loading = false);
       if (mounted) showShmSnack(context, errorMessage(e), error: true);
@@ -239,6 +270,15 @@ class _AuthScreenState extends State<AuthScreen> {
                 fontSize: 14, color: scheme.onSurfaceVariant, height: 1.5),
           ),
           const SizedBox(height: 36),
+          if (!kIsWeb && Platform.isIOS) ...[
+            _ProviderButton(
+              icon: Icons.apple,
+              label: 'Mit Apple anmelden',
+              subtitle: 'Apple-ID verwenden',
+              onTap: _loading ? null : _signInWithApple,
+            ),
+            const SizedBox(height: ShmTheme.gapM),
+          ],
           _ProviderButton(
             icon: Icons.email_outlined,
             label: 'Mit E-Mail anmelden',

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/storage_service.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/stats_widgets.dart';
@@ -42,8 +43,9 @@ class _LandkreisDetailScreenState extends State<LandkreisDetailScreen> {
       _error = null;
     });
     try {
+      final deviceToken = await StorageService.getOrCreateDeviceToken();
       final data = await ApiService.getLandkreisDetail(
-          widget.questionId, widget.landkreisId);
+          widget.questionId, widget.landkreisId, deviceToken);
       if (mounted) {
         setState(() {
           _totalVotes = data['total_votes'] as int? ?? 0;
@@ -114,10 +116,10 @@ class _LandkreisDetailScreenState extends State<LandkreisDetailScreen> {
           ),
         ] else
           const EmptyState(
-            icon: Icons.lock_outline,
-            title: 'Quorum noch nicht erreicht',
+            icon: Icons.how_to_vote_outlined,
+            title: 'Noch keine Stimmen',
             subtitle:
-                'Für diesen Landkreis liegen weniger als 10 Stimmen vor.\nErgebnisse werden erst ab 10 Stimmen angezeigt — das schützt die Anonymität.',
+                'Für diesen Landkreis liegen noch keine Stimmen vor.\nSobald hier abgestimmt wird, erscheinen die Ergebnisse.',
           ),
       ],
     );

@@ -46,11 +46,11 @@ class LegalScreen extends StatelessWidget {
               '• E-Mail-Hash (optional): Art. 6(1)(a) DSGVO',
             ),
             SizedBox(height: 16),
-            Text('4. Quorum-Schutz', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text('4. Fair-Play-Prinzip', style: TextStyle(fontWeight: FontWeight.bold)),
             SizedBox(height: 4),
             Text(
-              'Ergebnisse eines Landkreises werden erst angezeigt, wenn mindestens 10 Stimmen aus dieser Region vorliegen. '
-              'Landkreise mit weniger Stimmen werden grau (keine Daten) dargestellt.',
+              'Ergebnisse einer Frage sind erst sichtbar, nachdem du selbst abgestimmt hast — '
+              'das wird auch serverseitig durchgesetzt. Regionale Ergebnisse werden ab der ersten Stimme angezeigt.',
             ),
             SizedBox(height: 16),
             Text('5. Deine Rechte', style: TextStyle(fontWeight: FontWeight.bold)),

@@ -272,7 +272,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         for (final s in const [
                           'Deine PLZ wird serverseitig zu einer Region umgewandelt und sofort verworfen.',
                           'Abstimmungen sind nur per Geräte-ID verknüpft — kein Name, keine E-Mail.',
-                          'Ergebnisse sind erst ab 10 Stimmen pro Region sichtbar.',
+                          'Ergebnisse siehst du erst, nachdem du selbst abgestimmt hast.',
                         ])
                           Padding(
                             padding: const EdgeInsets.only(bottom: 4),

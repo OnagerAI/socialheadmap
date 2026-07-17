@@ -9,14 +9,27 @@ from app.plz_mapping import QUORUM
 router = APIRouter(prefix="/stats", tags=["stats"])
 
 
+def _require_own_vote(conn, question_id: str, device_token: str | None) -> None:
+    """Fair Play serverseitig: Ergebnisse gibt es erst nach eigener Stimme."""
+    if not device_token:
+        raise HTTPException(status_code=403, detail="vote_required")
+    row = conn.execute(
+        "SELECT 1 FROM votes WHERE device_token = ? AND question_id = ?",
+        (device_token, question_id),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=403, detail="vote_required")
+
+
 @router.get("/map/{question_id}", response_model=MapSnapshot)
-def get_map_snapshot(question_id: str):
+def get_map_snapshot(question_id: str, device_token: str | None = None):
     with get_db() as conn:
         q = conn.execute(
             "SELECT id FROM questions WHERE id = ? AND status IN ('active','archived')", (question_id,)
         ).fetchone()
         if not q:
             raise HTTPException(status_code=404, detail="question_not_found")
+        _require_own_vote(conn, question_id, device_token)
 
         rows = conn.execute(
             """SELECT v.landkreis_id, l.name, v.answer, COUNT(*) as cnt
@@ -79,13 +92,14 @@ async def live_updates(question_id: str):
 
 
 @router.get("/map/{question_id}/bundeslaender", response_model=BundeslandSnapshot)
-def get_bundesland_snapshot(question_id: str):
+def get_bundesland_snapshot(question_id: str, device_token: str | None = None):
     with get_db() as conn:
         q = conn.execute(
             "SELECT id FROM questions WHERE id = ? AND status IN ('active','archived')", (question_id,)
         ).fetchone()
         if not q:
             raise HTTPException(status_code=404, detail="question_not_found")
+        _require_own_vote(conn, question_id, device_token)
 
         rows = conn.execute(
             """SELECT l.bundesland, COUNT(*) as total_votes
@@ -104,13 +118,15 @@ def get_bundesland_snapshot(question_id: str):
 
 
 @router.get("/map/{question_id}/bundesland-detail", response_model=BundeslandDetail)
-def get_bundesland_detail(question_id: str, bundesland: str):
+def get_bundesland_detail(question_id: str, bundesland: str,
+                          device_token: str | None = None):
     with get_db() as conn:
         q = conn.execute(
             "SELECT id FROM questions WHERE id = ? AND status IN ('active','archived')", (question_id,)
         ).fetchone()
         if not q:
             raise HTTPException(status_code=404, detail="question_not_found")
+        _require_own_vote(conn, question_id, device_token)
 
         # Quorum-Schutz (Art.-9-Daten): nur Landkreise einbeziehen, die das
         # Quorum erreichen — sonst wären Einzelantworten rekonstruierbar.
@@ -154,13 +170,15 @@ def get_bundesland_detail(question_id: str, bundesland: str):
 
 
 @router.get("/map/{question_id}/landkreis-detail", response_model=LandkreisDetail)
-def get_landkreis_detail(question_id: str, landkreis_id: str):
+def get_landkreis_detail(question_id: str, landkreis_id: str,
+                         device_token: str | None = None):
     with get_db() as conn:
         q = conn.execute(
             "SELECT id FROM questions WHERE id = ? AND status IN ('active','archived')", (question_id,)
         ).fetchone()
         if not q:
             raise HTTPException(status_code=404, detail="question_not_found")
+        _require_own_vote(conn, question_id, device_token)
 
         lk = conn.execute(
             "SELECT id, name FROM landkreise WHERE id = ?", (landkreis_id,)

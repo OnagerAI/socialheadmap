@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../constants.dart';
 import '../services/api_service.dart';
+import '../services/storage_service.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/stats_widgets.dart';
@@ -41,8 +42,9 @@ class _BundeslandStatsScreenState extends State<BundeslandStatsScreen> {
       _error = null;
     });
     try {
+      final deviceToken = await StorageService.getOrCreateDeviceToken();
       final data = await ApiService.getBundeslandDetail(
-          widget.questionId, widget.bundesland);
+          widget.questionId, widget.bundesland, deviceToken);
       if (mounted) {
         setState(() {
           _totalVotes = data['total_votes'] as int? ?? 0;
@@ -106,7 +108,7 @@ class _BundeslandStatsScreenState extends State<BundeslandStatsScreen> {
               ),
               const SizedBox(height: ShmTheme.gapS),
               Text(
-                'Ergebnisse erscheinen, sobald Landkreise das Quorum von 10 Stimmen erreichen.',
+                'Ergebnisse erscheinen, sobald aus diesem Bundesland abgestimmt wird.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13,
@@ -131,7 +133,7 @@ class _BundeslandStatsScreenState extends State<BundeslandStatsScreen> {
         AgeGroupBreakdown(ageGroups: _ageGroups),
         const SizedBox(height: ShmTheme.gapM),
         Text(
-          'Basis: $_totalVotes Stimmen aus Landkreisen mit Quorum (≥ 10 Stimmen)',
+          'Basis: $_totalVotes Stimmen aus ${widget.bundesland}',
           style: TextStyle(
             fontSize: 11.5,
             color: Theme.of(context).colorScheme.onSurfaceVariant,

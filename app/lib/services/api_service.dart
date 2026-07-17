@@ -137,25 +137,31 @@ class ApiService {
   }
 
   // ── Statistiken & Karte ───────────────────────────────────────────────────
+  // Ergebnisse gibt es serverseitig nur nach eigener Stimme — deshalb wird
+  // überall das device_token mitgeschickt (Fair Play).
 
-  static Future<Map<String, dynamic>> getMapSnapshot(String questionId) =>
-      _getJson('/stats/map/$questionId', fallbackCode: 'map_load_failed');
+  static Future<Map<String, dynamic>> getMapSnapshot(
+          String questionId, String deviceToken) =>
+      _getJson('/stats/map/$questionId',
+          query: {'device_token': deviceToken},
+          fallbackCode: 'map_load_failed');
 
   static Future<Map<String, dynamic>> getBundeslandSnapshot(
-          String questionId) =>
+          String questionId, String deviceToken) =>
       _getJson('/stats/map/$questionId/bundeslaender',
+          query: {'device_token': deviceToken},
           fallbackCode: 'map_load_failed');
 
   static Future<Map<String, dynamic>> getBundeslandDetail(
-          String questionId, String bundesland) =>
+          String questionId, String bundesland, String deviceToken) =>
       _getJson('/stats/map/$questionId/bundesland-detail',
-          query: {'bundesland': bundesland},
+          query: {'bundesland': bundesland, 'device_token': deviceToken},
           fallbackCode: 'stats_load_failed');
 
   static Future<Map<String, dynamic>> getLandkreisDetail(
-          String questionId, String landkreisId) =>
+          String questionId, String landkreisId, String deviceToken) =>
       _getJson('/stats/map/$questionId/landkreis-detail',
-          query: {'landkreis_id': landkreisId},
+          query: {'landkreis_id': landkreisId, 'device_token': deviceToken},
           fallbackCode: 'stats_load_failed');
 
   /// Leichter Zähler-Endpoint für den Live-Modus (ersetzt das SSE-Polling).
