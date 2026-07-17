@@ -3,8 +3,11 @@ set -e
 
 EC2="ubuntu@100.77.243.73"
 FLUTTER="/home/artur/flutter/bin/flutter"
-APP_DIR="$(dirname "$0")/app"
-BACKEND_DIR="$(dirname "$0")/backend"
+# Absolute Pfade — die Funktionen wechseln per cd das Verzeichnis,
+# relative dirname-Pfade zeigen danach ins Leere.
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+APP_DIR="$ROOT_DIR/app"
+BACKEND_DIR="$ROOT_DIR/backend"
 FIREBASE_APP_ID="1:373278842318:android:d367c4663a3807513cdf9f"
 GOOGLE_APPLICATION_CREDENTIALS="/home/artur/.config/gamodi/firebase-service-account.json"
 
@@ -19,7 +22,7 @@ deploy_web() {
   $FLUTTER build web --release --no-web-resources-cdn
 
   echo "=== Service Worker deaktivieren ==="
-  cd "$(dirname "$0")"
+  cd "$ROOT_DIR"
   python3 patch_sw.py
 
   echo "=== Flutter Web → EC2 ==="
