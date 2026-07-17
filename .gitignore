@@ -15,7 +15,6 @@ app/ios/Flutter/App.framework
 app/ios/Flutter/Generated.xcconfig
 app/ios/Flutter/flutter_export_environment.sh
 app/ios/Pods/
-app/web/
 
 # Python
 __pycache__/
