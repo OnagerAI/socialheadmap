@@ -1,86 +1,113 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+/// Wird von API-Aufrufen bei Fehlern geworfen. [code] ist ein maschinen-
+/// lesbarer Schlüssel (z. B. `already_voted`), den die UI in eine
+/// deutsche Meldung übersetzt.
+class ApiException implements Exception {
+  final String code;
+  final int? statusCode;
+  const ApiException(this.code, [this.statusCode]);
+
+  @override
+  String toString() => code;
+}
+
+/// Einziger HTTP-Zugang der App — alle Endpoints und die Base-URL leben hier.
 class ApiService {
-  static const String baseUrl = 'https://shm.13-61-179-136.nip.io';
+  static const String baseUrl = String.fromEnvironment(
+    'SHM_BASE_URL',
+    defaultValue: 'https://shm.13-61-179-136.nip.io',
+  );
+
+  static const _jsonHeaders = {'Content-Type': 'application/json'};
+  static const _timeout = Duration(seconds: 15);
+
+  static Uri _uri(String path, [Map<String, String>? query]) =>
+      Uri.parse('$baseUrl$path').replace(queryParameters: query);
+
+  static dynamic _decode(http.Response res) =>
+      jsonDecode(utf8.decode(res.bodyBytes));
+
+  /// Wirft eine [ApiException] mit dem `detail`-Feld des Backends (falls
+  /// vorhanden), sonst mit [fallbackCode].
+  static Never _fail(http.Response res, String fallbackCode) {
+    String code = fallbackCode;
+    try {
+      final detail = (_decode(res) as Map<String, dynamic>)['detail'];
+      if (detail is String && detail.isNotEmpty) code = detail;
+    } catch (_) {}
+    throw ApiException(code, res.statusCode);
+  }
+
+  static Future<Map<String, dynamic>> _postJson(
+    String path,
+    Map<String, dynamic> body, {
+    String fallbackCode = 'request_failed',
+  }) async {
+    final res = await http
+        .post(_uri(path), headers: _jsonHeaders, body: jsonEncode(body))
+        .timeout(_timeout);
+    if (res.statusCode != 200) _fail(res, fallbackCode);
+    return _decode(res) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> _getJson(
+    String path, {
+    Map<String, String>? query,
+    Duration? timeout,
+    String fallbackCode = 'request_failed',
+  }) async {
+    final res =
+        await http.get(_uri(path, query)).timeout(timeout ?? _timeout);
+    if (res.statusCode != 200) _fail(res, fallbackCode);
+    return _decode(res) as Map<String, dynamic>;
+  }
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
-  static Future<Map<String, dynamic>> requestMagicLink(String email) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/auth/magic-link/request'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email}),
-    );
-    if (res.statusCode == 400) throw Exception('invalid_email');
-    if (res.statusCode != 200) throw Exception('magic_link_failed');
-    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-  }
+  static Future<Map<String, dynamic>> requestMagicLink(String email) =>
+      _postJson('/auth/magic-link/request', {'email': email},
+          fallbackCode: 'magic_link_failed');
 
-  static Future<Map<String, dynamic>> verifyMagicLink(String token) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/auth/magic-link/verify'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'token': token}),
-    );
-    if (res.statusCode == 404) throw Exception('token_not_found');
-    if (res.statusCode == 410) {
-      final detail = jsonDecode(utf8.decode(res.bodyBytes))['detail'] ?? '';
-      throw Exception(detail);
-    }
-    if (res.statusCode != 200) throw Exception('verify_failed');
-    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-  }
+  static Future<Map<String, dynamic>> verifyMagicLink(String token) =>
+      _postJson('/auth/magic-link/verify', {'token': token},
+          fallbackCode: 'verify_failed');
 
   static Future<Map<String, dynamic>> socialLogin(
-      String provider, String accessToken) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/auth/social'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'provider': provider, 'access_token': accessToken}),
-    );
-    if (res.statusCode == 401) {
-      final detail = jsonDecode(utf8.decode(res.bodyBytes))['detail'] ?? '';
-      throw Exception(detail);
-    }
-    if (res.statusCode != 200) throw Exception('social_login_failed');
-    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-  }
+          String provider, String accessToken) =>
+      _postJson('/auth/social',
+          {'provider': provider, 'access_token': accessToken},
+          fallbackCode: 'social_login_failed');
 
   static Future<void> logoutJwt(String jwt) async {
-    await http.post(
-      Uri.parse('$baseUrl/auth/logout'),
-      headers: {'Authorization': 'Bearer $jwt'},
-    );
+    await http
+        .post(_uri('/auth/logout'), headers: {'Authorization': 'Bearer $jwt'})
+        .timeout(_timeout);
   }
 
   static Future<Map<String, dynamic>> getMe(String jwt) async {
-    final res = await http.get(
-      Uri.parse('$baseUrl/auth/me'),
-      headers: {'Authorization': 'Bearer $jwt'},
-    );
-    if (res.statusCode == 401) throw Exception('not_authenticated');
-    if (res.statusCode != 200) throw Exception('profile_load_failed');
-    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    final res = await http
+        .get(_uri('/auth/me'), headers: {'Authorization': 'Bearer $jwt'})
+        .timeout(_timeout);
+    if (res.statusCode != 200) _fail(res, 'profile_load_failed');
+    return _decode(res) as Map<String, dynamic>;
   }
 
-  static Future<List<Map<String, dynamic>>> getActiveQuestions() async {
-    final res = await http.get(Uri.parse('$baseUrl/questions/'));
-    if (res.statusCode != 200) throw Exception('Fragen konnten nicht geladen werden');
-    return List<Map<String, dynamic>>.from(jsonDecode(utf8.decode(res.bodyBytes)));
-  }
-
-  static Future<Map<String, dynamic>> register(String deviceToken, {String? emailHash}) async {
+  static Future<Map<String, dynamic>> register(String deviceToken,
+      {String? emailHash}) {
     final body = <String, dynamic>{'device_token': deviceToken};
     if (emailHash != null) body['email_hash'] = emailHash;
-    final res = await http.post(
-      Uri.parse('$baseUrl/auth/register'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
-    );
-    if (res.statusCode == 409) throw Exception('already_registered');
-    if (res.statusCode != 200) throw Exception('Registrierung fehlgeschlagen');
-    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    return _postJson('/auth/register', body,
+        fallbackCode: 'register_failed');
+  }
+
+  // ── Fragen & Votes ────────────────────────────────────────────────────────
+
+  static Future<List<Map<String, dynamic>>> getActiveQuestions() async {
+    final res = await http.get(_uri('/questions/')).timeout(_timeout);
+    if (res.statusCode != 200) _fail(res, 'questions_load_failed');
+    return List<Map<String, dynamic>>.from(_decode(res) as List);
   }
 
   static Future<Map<String, dynamic>> submitVote({
@@ -89,36 +116,57 @@ class ApiService {
     required String answer,
     required String plz,
     required String ageGroup,
-  }) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/votes/'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
+  }) =>
+      _postJson('/votes/', {
         'device_token': deviceToken,
         'question_id': questionId,
         'answer': answer,
         'plz': plz,
         'age_group': ageGroup,
-      }),
-    );
-    if (res.statusCode == 409) throw Exception('already_voted');
-    if (res.statusCode == 422) {
-      final detail = jsonDecode(utf8.decode(res.bodyBytes))['detail'];
-      throw Exception(detail ?? 'Ungültige Eingabe');
-    }
-    if (res.statusCode != 200) throw Exception('Abstimmung fehlgeschlagen');
-    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      }, fallbackCode: 'vote_failed');
+
+  /// Eigene Votes vom Server (für Wiederherstellung nach Neuinstallation).
+  /// Liefert eine Liste `{question_id, answer, question_title, category}`.
+  static Future<List<Map<String, dynamic>>> getMyVotes(
+      String deviceToken) async {
+    final data = await _getJson('/votes/mine',
+        query: {'device_token': deviceToken},
+        fallbackCode: 'my_votes_failed');
+    return List<Map<String, dynamic>>.from(
+        (data['votes'] as List<dynamic>? ?? []));
   }
 
-  static Future<Map<String, dynamic>> getMapSnapshot(String questionId) async {
-    final res = await http.get(Uri.parse('$baseUrl/stats/map/$questionId'));
-    if (res.statusCode != 200) throw Exception('Kartendaten nicht verfügbar');
-    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+  // ── Statistiken & Karte ───────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getMapSnapshot(String questionId) =>
+      _getJson('/stats/map/$questionId', fallbackCode: 'map_load_failed');
+
+  static Future<Map<String, dynamic>> getBundeslandSnapshot(
+          String questionId) =>
+      _getJson('/stats/map/$questionId/bundeslaender',
+          fallbackCode: 'map_load_failed');
+
+  static Future<Map<String, dynamic>> getBundeslandDetail(
+          String questionId, String bundesland) =>
+      _getJson('/stats/map/$questionId/bundesland-detail',
+          query: {'bundesland': bundesland},
+          fallbackCode: 'stats_load_failed');
+
+  static Future<Map<String, dynamic>> getLandkreisDetail(
+          String questionId, String landkreisId) =>
+      _getJson('/stats/map/$questionId/landkreis-detail',
+          query: {'landkreis_id': landkreisId},
+          fallbackCode: 'stats_load_failed');
+
+  /// Leichter Zähler-Endpoint für den Live-Modus (ersetzt das SSE-Polling).
+  static Future<int> getLiveTotal(String questionId) async {
+    final data = await _getJson('/stats/map/$questionId/total',
+        timeout: const Duration(seconds: 5), fallbackCode: 'live_failed');
+    return data['total_votes'] as int? ?? 0;
   }
 
-  static Future<Map<String, dynamic>> getLandkreiseGeoJson() async {
-    final res = await http.get(Uri.parse('$baseUrl/stats/geojson/landkreise'));
-    if (res.statusCode != 200) throw Exception('GeoJSON nicht verfügbar');
-    return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-  }
+  static Future<Map<String, dynamic>> getLandkreiseGeoJson() =>
+      _getJson('/stats/geojson/landkreise',
+          timeout: const Duration(seconds: 30),
+          fallbackCode: 'geojson_load_failed');
 }

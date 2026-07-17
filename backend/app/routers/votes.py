@@ -47,6 +47,44 @@ def submit_vote(req: VoteRequest):
         return VoteResponse(success=True, vote_id=vote_id)
 
 
+@router.get("/mine")
+def my_votes(device_token: str):
+    """Eigene Votes dieses Geräts — für 'Meine Antworten' nach Neuinstallation.
+
+    Liefert bewusst nur Frage-Metadaten und die eigene Antwort; keine
+    Regionsdaten (die Landkreis-Zuordnung bleibt serverintern).
+    """
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id FROM user_auth WHERE device_token = ?", (device_token,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=401, detail="device_not_registered")
+
+        rows = conn.execute(
+            """SELECT v.question_id, v.answer, v.created_at,
+                      q.title AS question_title, q.category
+               FROM votes v
+               JOIN questions q ON q.id = v.question_id
+               WHERE v.device_token = ?
+               ORDER BY v.created_at DESC""",
+            (device_token,),
+        ).fetchall()
+
+    return {
+        "votes": [
+            {
+                "question_id": r["question_id"],
+                "answer": r["answer"],
+                "created_at": r["created_at"],
+                "question_title": r["question_title"],
+                "category": r["category"],
+            }
+            for r in rows
+        ]
+    }
+
+
 def _validate_answer(answer: str, question) -> None:
     import json
     answer_type = question["answer_type"]

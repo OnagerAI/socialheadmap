@@ -1,13 +1,13 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:http/http.dart' as http;
+import '../services/api_service.dart';
+import '../theme.dart';
+import '../widgets/common.dart';
+import '../widgets/stats_widgets.dart';
 import 'bundesland_stats_screen.dart';
 import 'landkreis_detail_screen.dart';
-
-const String _baseUrl = 'https://shm.13-61-179-136.nip.io';
 
 class MapScreen extends StatefulWidget {
   final String questionId;
@@ -30,7 +30,7 @@ class _MapScreenState extends State<MapScreen> {
   Map<String, Map<String, dynamic>>? _landkreisData;
   Map<String, int> _bundeslandVotes = {};
   bool _loading = true;
-  String? _error;
+  Object? _error;
 
   bool _liveActive = false;
   Timer? _liveTimer;
@@ -65,7 +65,7 @@ class _MapScreenState extends State<MapScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = e;
           _loading = false;
         });
       }
@@ -77,25 +77,13 @@ class _MapScreenState extends State<MapScreen> {
       if (mounted) setState(() => _geoJson = _cachedGeoJson);
       return;
     }
-    final response = await http
-        .get(Uri.parse('$_baseUrl/stats/geojson/landkreise'))
-        .timeout(const Duration(seconds: 30));
-    if (response.statusCode != 200) {
-      throw Exception('GeoJSON-Fehler: HTTP ${response.statusCode}');
-    }
-    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final data = await ApiService.getLandkreiseGeoJson();
     _cachedGeoJson = data;
     if (mounted) setState(() => _geoJson = data);
   }
 
   Future<void> _loadSnapshot() async {
-    final response = await http
-        .get(Uri.parse('$_baseUrl/stats/map/${widget.questionId}'))
-        .timeout(const Duration(seconds: 15));
-    if (response.statusCode != 200) {
-      throw Exception('Snapshot-Fehler: HTTP ${response.statusCode}');
-    }
-    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final data = await ApiService.getMapSnapshot(widget.questionId);
     final landkreise = (data['landkreise'] as List<dynamic>?) ?? [];
     final map = <String, Map<String, dynamic>>{};
     for (final lk in landkreise) {
@@ -112,11 +100,7 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _loadBundeslandData() async {
     try {
-      final response = await http
-          .get(Uri.parse('$_baseUrl/stats/map/${widget.questionId}/bundeslaender'))
-          .timeout(const Duration(seconds: 15));
-      if (response.statusCode != 200) return;
-      final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final data = await ApiService.getBundeslandSnapshot(widget.questionId);
       final bls = (data['bundeslaender'] as List<dynamic>?) ?? [];
       final map = <String, int>{};
       for (final bl in bls) {
@@ -127,6 +111,32 @@ class _MapScreenState extends State<MapScreen> {
     } catch (_) {}
   }
 
+  // ── Live-Modus: leichter Zähler-Poll, Snapshot nur bei Änderung ───────────
+
+  void _toggleLive() => _liveActive ? _stopLive() : _startLive();
+
+  void _startLive() {
+    setState(() => _liveActive = true);
+    _liveTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      try {
+        final total = await ApiService.getLiveTotal(widget.questionId);
+        if (mounted && total != _liveTotalVotes) {
+          _liveTotalVotes = total;
+          await _loadSnapshot();
+          await _loadBundeslandData();
+        }
+      } catch (_) {}
+    });
+  }
+
+  void _stopLive() {
+    _liveTimer?.cancel();
+    _liveTimer = null;
+    setState(() => _liveActive = false);
+  }
+
+  // ── Navigation Übersicht ↔ Bundesland-Detail ──────────────────────────────
+
   void _selectBundesland(String blName) {
     setState(() => _selectedBundesland = blName);
     final bounds = _computeBundeslandBounds(blName);
@@ -134,10 +144,7 @@ class _MapScreenState extends State<MapScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _mapController.fitCamera(
-            CameraFit.bounds(
-              bounds: bounds,
-              padding: const EdgeInsets.all(50),
-            ),
+            CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)),
           );
         }
       });
@@ -147,9 +154,7 @@ class _MapScreenState extends State<MapScreen> {
   void _backToOverview() {
     setState(() => _selectedBundesland = null);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _mapController.move(_germanyCenter, _germanyZoom);
-      }
+      if (mounted) _mapController.move(_germanyCenter, _germanyZoom);
     });
   }
 
@@ -168,12 +173,11 @@ class _MapScreenState extends State<MapScreen> {
       maxLng = maxLng == null ? lng : (lng > maxLng! ? lng : maxLng!);
     }
 
-    void processRing(List<dynamic> ring) {
-      for (final c in ring) processCoord(c);
-    }
-
     void processPoly(List<dynamic> poly) {
-      if (poly.isNotEmpty) processRing(poly[0] as List<dynamic>);
+      if (poly.isEmpty) return;
+      for (final c in poly[0] as List<dynamic>) {
+        processCoord(c);
+      }
     }
 
     for (final feature in features) {
@@ -186,7 +190,9 @@ class _MapScreenState extends State<MapScreen> {
       if (geoType == 'Polygon') {
         processPoly(coords);
       } else if (geoType == 'MultiPolygon') {
-        for (final poly in coords) processPoly(poly as List<dynamic>);
+        for (final poly in coords) {
+          processPoly(poly as List<dynamic>);
+        }
       }
     }
 
@@ -194,76 +200,59 @@ class _MapScreenState extends State<MapScreen> {
     return LatLngBounds(LatLng(minLat!, minLng!), LatLng(maxLat!, maxLng!));
   }
 
-  Color _colorForOverview(String bundesland) {
+  // ── Einfärbung ────────────────────────────────────────────────────────────
+
+  Color _colorForOverview(ShmColors shm, Color emptyColor, String bundesland) {
     final votes = _bundeslandVotes[bundesland] ?? 0;
-    if (votes == 0) return const Color(0xFFF0F5FA);
+    if (votes == 0) return emptyColor;
 
-    // Rang-basierte Einfärbung: sortiere alle BL mit Stimmen, Position = Helligkeit
-    final ranked = _bundeslandVotes.entries
-        .where((e) => e.value > 0)
-        .map((e) => e.value)
-        .toList()
-      ..sort();
-
+    // Rang-basierte Einfärbung: Position unter allen BL mit Stimmen.
+    final ranked = _bundeslandVotes.values.where((v) => v > 0).toList()..sort();
     int rank = 0;
     for (final v in ranked) {
       if (v < votes) rank++;
     }
 
+    final ramp = shm.participationRamp;
     final n = ranked.length;
     final t = n <= 1 ? 1.0 : rank / (n - 1);
-
-    // 5 Stufen: weiß → hellblau → mittelblau → blau → dunkelblau
-    const steps = [
-      Color(0xFFDEECF8),
-      Color(0xFF9BBFE8),
-      Color(0xFF5490C8),
-      Color(0xFF2163A8),
-      Color(0xFF0D3D7A),
-    ];
-    final stepIdx = n <= 1 ? 4 : (t * (steps.length - 1)).round().clamp(0, steps.length - 1);
-    return steps[stepIdx];
+    final stepIdx =
+        n <= 1 ? ramp.length - 1 : (t * (ramp.length - 1)).round().clamp(0, ramp.length - 1);
+    return ramp[stepIdx];
   }
 
-  Color _colorForLandkreis(String nuts3) {
-    if (_landkreisData == null) return const Color(0xFFF2F2F2);
-    final lk = _landkreisData![nuts3];
-    if (lk == null) return const Color(0xFFEEEEEE);
+  Color _colorForLandkreis(ShmColors shm, String nuts3) {
+    final lk = _landkreisData?[nuts3];
+    if (lk == null) return shm.noQuorum.withOpacity(0.5);
     final hasQuorum = lk['has_quorum'] as bool? ?? false;
-    if (!hasQuorum) return const Color(0xFFDDDDDD);
     final results = lk['results'] as Map<String, dynamic>? ?? {};
-    if (results.isEmpty) return const Color(0xFFDDDDDD);
+    if (!hasQuorum || results.isEmpty) return shm.noQuorum;
 
+    // Binär: Ja/Nein-Verhältnis.
     final ja = (results['ja'] as num?)?.toDouble() ?? 0;
     final nein = (results['nein'] as num?)?.toDouble() ?? 0;
     if (ja > 0 || nein > 0) {
       if (ja >= nein) {
         final t = ((ja / (ja + nein)) - 0.5).clamp(0.0, 0.5) / 0.5;
-        return Color.lerp(const Color(0xFFC8E6C9), const Color(0xFF2E7D32), t)!;
-      } else {
-        final t = ((nein / (ja + nein)) - 0.5).clamp(0.0, 0.5) / 0.5;
-        return Color.lerp(const Color(0xFFFFCDD2), const Color(0xFFC62828), t)!;
+        return Color.lerp(shm.yesWeak, shm.yesStrong, t)!;
       }
+      final t = ((nein / (ja + nein)) - 0.5).clamp(0.0, 0.5) / 0.5;
+      return Color.lerp(shm.noWeak, shm.noStrong, t)!;
     }
 
+    // Skala: gewichteter Mittelwert 1–5.
     double total = 0, weightedSum = 0;
     for (int i = 1; i <= 5; i++) {
-      final v = (results[i.toString()] as num?)?.toDouble() ?? 0;
+      final v = (results['$i'] as num?)?.toDouble() ?? 0;
       total += v;
       weightedSum += v * i;
     }
     if (total > 0) {
       final t = ((weightedSum / total) - 1) / 4;
-      return Color.lerp(const Color(0xFF42A5F5), const Color(0xFFFF8F00), t)!;
+      return Color.lerp(shm.noStrong, shm.yesStrong, t)!;
     }
 
-    const palette = [
-      Color(0xFF5C85D6),
-      Color(0xFF66BB6A),
-      Color(0xFFFFB347),
-      Color(0xFFBA68C8),
-    ];
-    final keys = results.keys.toList();
+    // Multiple Choice: Farbe der Gewinner-Option.
     String? winner;
     double maxV = 0;
     results.forEach((k, v) {
@@ -273,17 +262,19 @@ class _MapScreenState extends State<MapScreen> {
         winner = k;
       }
     });
-    if (winner != null) return palette[keys.indexOf(winner!) % palette.length];
-    return const Color(0xFFDDDDDD);
+    if (winner != null) {
+      final keys = results.keys.toList();
+      return answerColor(context, winner!, keys.indexOf(winner!));
+    }
+    return shm.noQuorum;
   }
 
-  void _onLandkreisTap(BuildContext context, String nuts3, String name) {
+  // ── Sheets ────────────────────────────────────────────────────────────────
+
+  void _onLandkreisTap(String nuts3, String name) {
     final lk = _landkreisData?[nuts3];
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
       builder: (_) => _LandkreisBottomSheet(
         nuts3: nuts3,
         name: name,
@@ -294,62 +285,32 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  void _toggleLive() {
-    if (_liveActive) {
-      _stopLive();
-    } else {
-      _startLive();
-    }
+  void _openStatsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _QuestionStatsSheet(
+        questionTitle: widget.questionTitle,
+        landkreisData: _landkreisData ?? {},
+      ),
+    );
   }
 
-  void _startLive() {
-    setState(() => _liveActive = true);
-    _liveTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
-      try {
-        final response = await http
-            .get(Uri.parse('$_baseUrl/stats/map/${widget.questionId}/live'))
-            .timeout(const Duration(seconds: 5));
-        if (response.statusCode == 200) {
-          final dataLine = utf8.decode(response.bodyBytes)
-              .split('\n')
-              .firstWhere((l) => l.startsWith('data:'), orElse: () => '');
-          if (dataLine.isNotEmpty) {
-            final json =
-                jsonDecode(dataLine.substring(5).trim()) as Map<String, dynamic>;
-            final totalVotes = json['total_votes'] as int? ?? 0;
-            if (mounted && totalVotes != _liveTotalVotes) {
-              _liveTotalVotes = totalVotes;
-              await _loadSnapshot();
-              await _loadBundeslandData();
-            }
-          }
-        }
-      } catch (_) {}
-    });
-  }
-
-  void _stopLive() {
-    _liveTimer?.cancel();
-    _liveTimer = null;
-    setState(() => _liveActive = false);
-  }
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final shm = context.shm;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.questionTitle),
+        title: Text(widget.questionTitle,
+            maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
-          if (_liveActive)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Row(
-                children: [
-                  Icon(Icons.circle, color: Colors.red.shade400, size: 10),
-                  const SizedBox(width: 4),
-                  const Text('Live', style: TextStyle(fontSize: 12)),
-                ],
-              ),
+          if (!_loading && _error == null)
+            IconButton(
+              icon: const Icon(Icons.bar_chart),
+              tooltip: 'Gesamtstatistik',
+              onPressed: _openStatsSheet,
             ),
         ],
       ),
@@ -358,46 +319,35 @@ class _MapScreenState extends State<MapScreen> {
           ? null
           : FloatingActionButton.extended(
               onPressed: _toggleLive,
-              icon: Icon(_liveActive ? Icons.stop : Icons.stream),
-              label: Text(_liveActive ? 'Live stoppen' : 'Live'),
-              backgroundColor: _liveActive ? Colors.red.shade400 : null,
+              icon: _liveActive
+                  ? Icon(Icons.stop_circle_outlined, color: shm.onNo)
+                  : const Icon(Icons.sensors),
+              label: Text(_liveActive ? 'Live an' : 'Live'),
+              backgroundColor: _liveActive ? shm.no : null,
+              foregroundColor: _liveActive ? shm.onNo : null,
             ),
     );
   }
 
   Widget _buildBody() {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.red),
-              const SizedBox(height: 12),
-              Text('Fehler beim Laden der Karte',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              Text(_error!, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: _loadData,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Erneut versuchen'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+    if (_error != null) return ErrorView(error: _error!, onRetry: _loadData);
     if (_geoJson == null) {
-      return const Center(child: Text('Keine Kartendaten verfügbar'));
+      return const EmptyState(
+          icon: Icons.map_outlined, title: 'Keine Kartendaten verfügbar');
     }
     return _buildMap();
   }
 
   Widget _buildMap() {
+    final shm = context.shm;
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final emptyColor =
+        isDark ? const Color(0xFF23262B) : const Color(0xFFF0F5FA);
+    final borderColor =
+        isDark ? const Color(0xFF4A5560) : const Color(0xFF6A8FAF);
+
     final features = (_geoJson!['features'] as List<dynamic>? ?? []);
     final isDetail = _selectedBundesland != null;
 
@@ -417,36 +367,29 @@ class _MapScreenState extends State<MapScreen> {
 
       if (isDetail && bl != _selectedBundesland) continue;
 
-      final color = isDetail ? _colorForLandkreis(nuts3) : _colorForOverview(bl);
-      final borderWidth = isDetail ? 1.0 : 0.4;
-      final borderColor =
-          isDetail ? const Color(0xFF3A3A3A) : const Color(0xFF6A8FAF);
+      final color = isDetail
+          ? _colorForLandkreis(shm, nuts3)
+          : _colorForOverview(shm, emptyColor, bl);
+
+      void addPolygon(List<dynamic> rings) {
+        final latLngRings =
+            rings.map((r) => _toLatLngs(r as List<dynamic>)).toList();
+        if (latLngRings.isEmpty) return;
+        polygons.add(Polygon(
+          points: latLngRings.first,
+          holePointsList:
+              latLngRings.length > 1 ? latLngRings.sublist(1) : [],
+          color: color,
+          borderColor: isDetail ? scheme.outline : borderColor,
+          borderStrokeWidth: isDetail ? 1.0 : 0.4,
+        ));
+      }
 
       if (geoType == 'Polygon') {
-        final rings =
-            coordinates.map((r) => _toLatLngs(r as List<dynamic>)).toList();
-        if (rings.isNotEmpty) {
-          polygons.add(Polygon(
-            points: rings.first,
-            holePointsList: rings.length > 1 ? rings.sublist(1) : [],
-            color: color,
-            borderColor: borderColor,
-            borderStrokeWidth: borderWidth,
-          ));
-        }
+        addPolygon(coordinates);
       } else if (geoType == 'MultiPolygon') {
         for (final poly in coordinates) {
-          final polyRings =
-              (poly as List<dynamic>).map((r) => _toLatLngs(r as List<dynamic>)).toList();
-          if (polyRings.isNotEmpty) {
-            polygons.add(Polygon(
-              points: polyRings.first,
-              holePointsList: polyRings.length > 1 ? polyRings.sublist(1) : [],
-              color: color,
-              borderColor: borderColor,
-              borderStrokeWidth: borderWidth,
-            ));
-          }
+          addPolygon(poly as List<dynamic>);
         }
       }
 
@@ -461,7 +404,7 @@ class _MapScreenState extends State<MapScreen> {
           height: 44,
           child: GestureDetector(
             onTap: isDetail
-                ? () => _onLandkreisTap(context, nuts3, name)
+                ? () => _onLandkreisTap(nuts3, name)
                 : () => _selectBundesland(bl),
             child: const ColoredBox(color: Colors.transparent),
           ),
@@ -469,14 +412,16 @@ class _MapScreenState extends State<MapScreen> {
       }
     }
 
-    // Bundesland-Labels in der Übersicht — tippbar → Statistik-Screen
+    // Bundesland-Labels in der Übersicht — tippbar → Statistik-Screen.
     final labelMarkers = <Marker>[];
     if (!isDetail) {
       for (final entry in blCentroids.entries) {
         final blName = entry.key;
         final pts = entry.value;
-        final avgLat = pts.map((p) => p.latitude).reduce((a, b) => a + b) / pts.length;
-        final avgLng = pts.map((p) => p.longitude).reduce((a, b) => a + b) / pts.length;
+        final avgLat =
+            pts.map((p) => p.latitude).reduce((a, b) => a + b) / pts.length;
+        final avgLng =
+            pts.map((p) => p.longitude).reduce((a, b) => a + b) / pts.length;
         final votes = _bundeslandVotes[blName] ?? 0;
 
         labelMarkers.add(Marker(
@@ -495,12 +440,16 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.88),
+                color: scheme.surface.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF1565C0).withOpacity(0.4), width: 1),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 3)],
+                border:
+                    Border.all(color: scheme.primary.withOpacity(0.4)),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black12, blurRadius: 3)
+                ],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -510,29 +459,22 @@ class _MapScreenState extends State<MapScreen> {
                     blName,
                     textAlign: TextAlign.center,
                     maxLines: 2,
-                    style: const TextStyle(
-                      fontSize: 8.5,
+                    style: TextStyle(
+                      fontSize: 9.5,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF0D2D52),
+                      color: scheme.onSurface,
                       height: 1.2,
                     ),
                   ),
                   if (votes > 0) ...[
                     const SizedBox(height: 2),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.bar_chart, size: 9, color: Color(0xFF1565C0)),
-                        const SizedBox(width: 2),
-                        Text(
-                          '$votes',
-                          style: const TextStyle(
-                            fontSize: 8,
-                            color: Color(0xFF1565C0),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+                    Text(
+                      '$votes Stimmen',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ],
                 ],
@@ -546,11 +488,13 @@ class _MapScreenState extends State<MapScreen> {
     return Stack(
       children: [
         Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFFDDE8F0), Color(0xFFCDD8E4)],
+              colors: isDark
+                  ? const [Color(0xFF15181D), Color(0xFF1B2027)]
+                  : const [Color(0xFFDDE8F0), Color(0xFFCDD8E4)],
             ),
           ),
         ),
@@ -580,108 +524,67 @@ class _MapScreenState extends State<MapScreen> {
             if (labelMarkers.isNotEmpty) MarkerLayer(markers: labelMarkers),
           ],
         ),
-        // Zurück-Button im Detail-Modus
         if (isDetail)
           Positioned(
-            top: 12,
-            left: 12,
+            top: ShmTheme.gapM,
+            left: ShmTheme.gapM,
             child: Material(
-              elevation: 4,
-              borderRadius: BorderRadius.circular(24),
+              elevation: 3,
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(ShmTheme.radiusXl),
               child: InkWell(
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(ShmTheme.radiusXl),
                 onTap: _backToOverview,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: ShmTheme.gapL, vertical: 10),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.arrow_back, size: 18),
-                      SizedBox(width: 6),
-                      Text('Übersicht', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const Icon(Icons.arrow_back, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        _selectedBundesland!,
+                        style:
+                            const TextStyle(fontWeight: FontWeight.w700),
+                      ),
                     ],
                   ),
                 ),
               ),
             ),
           ),
-        // Bundesland-Titel im Detail-Modus
-        if (isDetail)
+        Positioned(
+          bottom: 88,
+          right: ShmTheme.gapM,
+          child: _MapLegend(isDetail: isDetail),
+        ),
+        if (_liveActive)
           Positioned(
-            top: 12,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.92),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6)],
-                ),
-                child: Text(
-                  _selectedBundesland!,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                ),
+            top: ShmTheme.gapM,
+            right: ShmTheme.gapM,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: shm.no,
+                borderRadius: BorderRadius.circular(ShmTheme.radiusXl),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.circle, size: 8, color: shm.onNo),
+                  const SizedBox(width: 5),
+                  Text('LIVE',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: shm.onNo)),
+                ],
               ),
             ),
           ),
-        // Legende
-        Positioned(
-          bottom: 80,
-          right: 12,
-          child: _buildLegend(isDetail),
-        ),
       ],
-    );
-  }
-
-  Widget _buildLegend(bool isDetail) {
-    if (isDetail) {
-      return Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.9),
-          borderRadius: BorderRadius.circular(8),
-          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Text('Ergebnis', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-            SizedBox(height: 4),
-            _LegendRow(color: Color(0xFFDDDDDD), label: '< 10 Stimmen'),
-            _LegendRow(color: Color(0xFF2E7D32), label: 'Ja (stark)'),
-            _LegendRow(color: Color(0xFFC62828), label: 'Nein (stark)'),
-          ],
-        ),
-      );
-    }
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: const [
-          Text('Beteiligung (Rang)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-          SizedBox(height: 4),
-          _LegendRow(color: Color(0xFFF0F5FA), label: 'Keine Stimmen'),
-          _LegendRow(color: Color(0xFFDEECF8), label: 'Rang 1 (wenigste)'),
-          _LegendRow(color: Color(0xFF9BBFE8), label: 'Rang 2'),
-          _LegendRow(color: Color(0xFF5490C8), label: 'Rang 3'),
-          _LegendRow(color: Color(0xFF2163A8), label: 'Rang 4'),
-          _LegendRow(color: Color(0xFF0D3D7A), label: 'Rang 5 (meiste)'),
-          SizedBox(height: 4),
-          Text('Chip-Tippen = Statistik', style: TextStyle(fontSize: 8, color: Colors.grey)),
-          Text('Fläche-Tippen = Landkreise', style: TextStyle(fontSize: 8, color: Colors.grey)),
-        ],
-      ),
     );
   }
 
@@ -720,33 +623,97 @@ class _MapScreenState extends State<MapScreen> {
   }
 }
 
-class _LegendRow extends StatelessWidget {
-  final Color color;
-  final String label;
-  const _LegendRow({required this.color, required this.label});
+// ── Legende ───────────────────────────────────────────────────────────────────
+
+class _MapLegend extends StatelessWidget {
+  final bool isDetail;
+  const _MapLegend({required this.isDetail});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
+    final shm = context.shm;
+    final scheme = Theme.of(context).colorScheme;
+
+    final rows = isDetail
+        ? [
+            (shm.noQuorum, 'Unter 10 Stimmen'),
+            (shm.yesStrong, 'Mehrheit Ja'),
+            (shm.noStrong, 'Mehrheit Nein'),
+          ]
+        : [
+            for (final (i, c) in shm.participationRamp.indexed)
+              (
+                c,
+                i == 0
+                    ? 'Wenig Beteiligung'
+                    : i == shm.participationRamp.length - 1
+                        ? 'Hohe Beteiligung'
+                        : ''
+              ),
+          ];
+
+    return Container(
+      padding: const EdgeInsets.all(ShmTheme.gapM),
+      decoration: BoxDecoration(
+        color: scheme.surface.withOpacity(0.92),
+        borderRadius: BorderRadius.circular(ShmTheme.radiusM),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 14, height: 14,
-            decoration: BoxDecoration(
-              color: color,
-              border: Border.all(color: Colors.black12),
-              borderRadius: BorderRadius.circular(2),
+          Text(isDetail ? 'Ergebnis' : 'Beteiligung',
+              style: const TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          if (isDetail)
+            for (final (color, label) in rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 13,
+                      height: 13,
+                      decoration: BoxDecoration(
+                        color: color,
+                        border: Border.all(color: scheme.outlineVariant),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(label, style: const TextStyle(fontSize: 11)),
+                  ],
+                ),
+              )
+          else ...[
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final (color, _) in rows)
+                  Container(width: 16, height: 12, color: color),
+              ],
             ),
+            const SizedBox(height: 3),
+            const Text('wenig  →  viel', style: TextStyle(fontSize: 10.5)),
+          ],
+          const SizedBox(height: 6),
+          Text(
+            isDetail
+                ? 'Fläche tippen: Landkreis-Details'
+                : 'Fläche: Landkreise · Label: Statistik',
+            style: TextStyle(
+                fontSize: 10.5, color: scheme.onSurfaceVariant),
           ),
-          const SizedBox(width: 6),
-          Text(label, style: const TextStyle(fontSize: 9)),
         ],
       ),
     );
   }
 }
+
+// ── Landkreis-Bottom-Sheet ────────────────────────────────────────────────────
 
 class _LandkreisBottomSheet extends StatelessWidget {
   final String nuts3;
@@ -765,134 +732,177 @@ class _LandkreisBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final hasData = data != null;
     final hasQuorum = hasData && (data!['has_quorum'] as bool? ?? false);
     final totalVotes = hasData ? (data!['total_votes'] as int? ?? 0) : 0;
-    final results =
-        hasData ? (data!['results'] as Map<String, dynamic>? ?? {}) : {};
+    final results = hasData
+        ? (data!['results'] as Map<String, dynamic>? ?? <String, dynamic>{})
+        : <String, dynamic>{};
 
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(
+          ShmTheme.gapXl, 0, ShmTheme.gapXl, ShmTheme.gapXl),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(
-            child: Container(
-              width: 40, height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
           Text(name, style: Theme.of(context).textTheme.titleLarge),
-          Text(nuts3,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: Colors.grey)),
-          const SizedBox(height: 16),
-          if (!hasData) ...[
-            const Text('Keine Abstimmungsdaten vorhanden.'),
-          ] else ...[
-            _InfoRow(label: 'Gesamtstimmen', value: totalVotes.toString()),
-            const SizedBox(height: 8),
-            if (!hasQuorum)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.shade200),
-                ),
-                child: const Text(
-                  'Kein Quorum erreicht – Ergebnisse nicht sichtbar',
-                  style: TextStyle(color: Colors.orange),
-                ),
+          const SizedBox(height: 2),
+          Text('$totalVotes Stimmen',
+              style: TextStyle(
+                  color: scheme.onSurfaceVariant, fontSize: 13)),
+          const SizedBox(height: ShmTheme.gapL),
+          if (!hasData || totalVotes == 0)
+            Text('Noch keine Abstimmungsdaten für diesen Landkreis.',
+                style: TextStyle(color: scheme.onSurfaceVariant))
+          else if (!hasQuorum)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(ShmTheme.gapM),
+              decoration: BoxDecoration(
+                color: scheme.tertiaryContainer,
+                borderRadius: BorderRadius.circular(ShmTheme.radiusM),
               ),
-            if (hasQuorum && results.isNotEmpty) ...[
-              const Divider(height: 24),
-              Text('Ergebnisse', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 8),
-              ...results.entries.map((e) {
-                final votes = (e.value as num?)?.toInt() ?? 0;
-                final pct = totalVotes > 0 ? votes / totalVotes : 0.0;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(e.key.toUpperCase()),
-                          Text('$votes Stimmen (${(pct * 100).round()}%)'),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      LinearProgressIndicator(
-                        value: pct,
-                        backgroundColor: Colors.grey.shade200,
-                        color: e.key == 'ja'
-                            ? Colors.green
-                            : e.key == 'nein'
-                                ? Colors.red
-                                : Colors.blue,
-                      ),
-                    ],
-                  ),
-                );
-              }),
-            ],
+              child: Text(
+                'Kein Quorum erreicht — Ergebnisse werden erst ab 10 Stimmen angezeigt.',
+                style: TextStyle(
+                    color: scheme.onTertiaryContainer, fontSize: 13),
+              ),
+            )
+          else if (results.isNotEmpty) ...[
+            DistributionBar(answers: results, total: totalVotes),
+            const SizedBox(height: ShmTheme.gapM),
+            AnswerLegend(answers: results, total: totalVotes),
           ],
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => LandkreisDetailScreen(
-                      landkreisId: nuts3,
-                      landkreisName: name,
-                      questionId: questionId,
-                      questionTitle: questionTitle,
-                    ),
+          const SizedBox(height: ShmTheme.gapXl),
+          FilledButton.tonalIcon(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => LandkreisDetailScreen(
+                    landkreisId: nuts3,
+                    landkreisName: name,
+                    questionId: questionId,
+                    questionTitle: questionTitle,
                   ),
-                );
-              },
-              icon: const Icon(Icons.bar_chart, size: 16),
-              label: const Text('Detailstatistik ansehen'),
-              style: ElevatedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.bar_chart, size: 18),
+            label: const Text('Detailstatistik ansehen'),
           ),
-          const SizedBox(height: 16),
         ],
       ),
     );
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  final String label;
-  final String value;
-  const _InfoRow({required this.label, required this.value});
+// ── Gesamtstatistik-Sheet (ersetzt den früheren StatsScreen) ─────────────────
+
+class _QuestionStatsSheet extends StatelessWidget {
+  final String questionTitle;
+  final Map<String, Map<String, dynamic>> landkreisData;
+
+  const _QuestionStatsSheet({
+    required this.questionTitle,
+    required this.landkreisData,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: const TextStyle(color: Colors.grey)),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
-      ],
+    final scheme = Theme.of(context).colorScheme;
+
+    // Gesamtverteilung nur über Landkreise mit Quorum (konsistent zur Karte).
+    final totals = <String, int>{};
+    int totalVotes = 0;
+    final withQuorum = <Map<String, dynamic>>[];
+    for (final lk in landkreisData.values) {
+      totalVotes += (lk['total_votes'] as int?) ?? 0;
+      if (lk['has_quorum'] != true) continue;
+      withQuorum.add(lk);
+      final results = lk['results'] as Map<String, dynamic>? ?? {};
+      for (final e in results.entries) {
+        totals[e.key] = (totals[e.key] ?? 0) + ((e.value as num?)?.toInt() ?? 0);
+      }
+    }
+    withQuorum.sort((a, b) => ((b['total_votes'] as int?) ?? 0)
+        .compareTo((a['total_votes'] as int?) ?? 0));
+    final top5 = withQuorum.take(5).toList();
+    final quorumVotes =
+        totals.values.fold<int>(0, (sum, v) => sum + v);
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) => ListView(
+        controller: scrollController,
+        padding: const EdgeInsets.fromLTRB(
+            ShmTheme.gapXl, 0, ShmTheme.gapXl, ShmTheme.gapXl),
+        children: [
+          Text('Gesamtstatistik',
+              style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 2),
+          Text(questionTitle,
+              style: TextStyle(
+                  color: scheme.onSurfaceVariant, fontSize: 13)),
+          const SizedBox(height: ShmTheme.gapXl),
+          StatsHeaderCard(
+            totalVotes: totalVotes,
+            totalAnswers: totals,
+          ),
+          if (quorumVotes < totalVotes) ...[
+            const SizedBox(height: ShmTheme.gapS),
+            Text(
+              'Verteilung basiert auf $quorumVotes Stimmen aus Landkreisen mit Quorum (≥ 10).',
+              style: TextStyle(
+                  fontSize: 11.5, color: scheme.onSurfaceVariant),
+            ),
+          ],
+          const SizedBox(height: ShmTheme.gapL),
+          if (top5.isNotEmpty) ...[
+            Text('Top 5 Landkreise',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: ShmTheme.gapM),
+            Card(
+              child: Column(
+                children: [
+                  for (final (i, lk) in top5.indexed) ...[
+                    if (i > 0) const Divider(height: 1),
+                    ListTile(
+                      dense: true,
+                      leading: Text(
+                        '#${i + 1}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          color: i == 0
+                              ? const Color(0xFFC9A227)
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      title: Text(
+                        (lk['landkreis_name'] as String?) ??
+                            (lk['landkreis_id'] as String? ?? '–'),
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w600),
+                      ),
+                      trailing: Text(
+                        '${lk['total_votes']} Stimmen',
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

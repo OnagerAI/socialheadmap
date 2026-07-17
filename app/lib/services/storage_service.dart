@@ -62,15 +62,27 @@ class StorageService {
   static const _votedQuestionsKey = 'voted_questions';
 
   static Future<void> markQuestionVoted(
-      String questionId, String questionTitle, String category) async {
+      String questionId, String questionTitle, String category,
+      {String? answer}) async {
     final raw = await _storage.read(key: _votedQuestionsKey) ?? '[]';
     final list = List<Map<String, dynamic>>.from(
       (jsonDecode(raw) as List).map((e) => Map<String, dynamic>.from(e as Map)),
     );
     if (!list.any((q) => q['id'] == questionId)) {
-      list.add({'id': questionId, 'title': questionTitle, 'category': category});
+      list.add({
+        'id': questionId,
+        'title': questionTitle,
+        'category': category,
+        if (answer != null) 'answer': answer,
+      });
       await _storage.write(key: _votedQuestionsKey, value: jsonEncode(list));
     }
+  }
+
+  /// Ersetzt die lokale Liste komplett — für den Abgleich mit /votes/mine.
+  static Future<void> replaceVotedQuestions(
+      List<Map<String, dynamic>> questions) async {
+    await _storage.write(key: _votedQuestionsKey, value: jsonEncode(questions));
   }
 
   static Future<List<Map<String, dynamic>>> getVotedQuestions() async {

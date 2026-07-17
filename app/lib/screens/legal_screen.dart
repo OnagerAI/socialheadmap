@@ -7,11 +7,11 @@ class LegalScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Datenschutz & Impressum')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+      body: const SingleChildScrollView(
+        padding: EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
+          children: [
             Text('Impressum', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             SizedBox(height: 8),
             Text('Angaben gemäß § 5 TMG\n\nSocialHeadmap\nBetreiber: Artur Shachnev\nDeutschland\n\nKontakt: info@socialheadmap.de'),
@@ -72,7 +72,7 @@ class LegalScreen extends StatelessWidget {
               'Da alle Stimmen vollständig anonym sind, können bereits abgegebene Stimmen nicht nachträglich entfernt werden.',
             ),
             SizedBox(height: 32),
-            Text('Stand: Mai 2026', style: TextStyle(color: Colors.black38, fontSize: 12)),
+            Text('Stand: Juli 2026', style: TextStyle(color: Colors.grey, fontSize: 12)),
           ],
         ),
       ),

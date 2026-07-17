@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../constants.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../theme.dart';
+import '../widgets/common.dart';
 import '../widgets/question_card.dart';
 import 'map_screen.dart';
 import 'my_answers_screen.dart';
@@ -65,9 +67,11 @@ class _FeedTab extends StatefulWidget {
 
 class _FeedTabState extends State<_FeedTab> {
   List<Map<String, dynamic>> _questions = [];
-  Set<String> _votedIds = {};
+
+  /// question_id → eigene Antwort ('' wenn Antwort unbekannt).
+  Map<String, String> _myAnswers = {};
   bool _loading = true;
-  String? _error;
+  Object? _error;
   String? _plz;
   String? _ageGroup;
 
@@ -97,38 +101,61 @@ class _FeedTabState extends State<_FeedTab> {
       final profile = await StorageService.getUserProfile();
       _plz = profile['plz'];
       _ageGroup = profile['age_group'];
-      final results = await Future.wait([
-        ApiService.getActiveQuestions(),
-        StorageService.getVotedQuestionIds(),
-      ]);
+
+      final questions = await ApiService.getActiveQuestions();
+      await _syncMyVotes();
+      final voted = await StorageService.getVotedQuestions();
+
       if (mounted) {
         setState(() {
-          _questions = results[0] as List<Map<String, dynamic>>;
-          _votedIds = results[1] as Set<String>;
+          _questions = questions;
+          _myAnswers = {
+            for (final q in voted)
+              q['id'] as String: (q['answer'] as String?) ?? '',
+          };
           _loading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString().replaceAll('Exception: ', '');
+          _error = e;
           _loading = false;
         });
       }
     }
   }
 
+  /// Gleicht die lokale „abgestimmt"-Liste mit dem Server ab, damit sie
+  /// eine Neuinstallation überlebt. Best effort — Fehler sind nicht fatal.
+  Future<void> _syncMyVotes() async {
+    try {
+      final deviceToken = await StorageService.getOrCreateDeviceToken();
+      final votes = await ApiService.getMyVotes(deviceToken);
+      await StorageService.replaceVotedQuestions([
+        for (final v in votes)
+          {
+            'id': v['question_id'],
+            'title': v['question_title'] ?? '',
+            'category': v['category'] ?? '',
+            'answer': v['answer'],
+          },
+      ]);
+    } catch (_) {
+      // Offline oder alter Server ohne /votes/mine — lokale Liste behalten.
+    }
+  }
+
   Future<void> _onAnswer(Map<String, dynamic> question, String answer) async {
     final plz = _plz ?? '';
     if (plz.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bitte richte zuerst dein Profil ein (PLZ).')),
-      );
+      showShmSnack(context, 'Bitte richte zuerst dein Profil ein (PLZ).');
       return;
     }
 
     final deviceToken = await StorageService.getOrCreateDeviceToken();
     final ageGroup = _ageGroup ?? 'B';
+    if (!mounted) return;
 
     try {
       await ApiService.submitVote(
@@ -138,50 +165,33 @@ class _FeedTabState extends State<_FeedTab> {
         plz: plz,
         ageGroup: ageGroup,
       );
-      await StorageService.markQuestionVoted(
-        question['id'],
-        question['title'] ?? '',
-        question['category'] ?? '',
-      );
+      await _markVoted(question, answer);
       if (mounted) {
-        setState(() => _votedIds = {..._votedIds, question['id']});
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Stimme abgegeben'),
-            backgroundColor: ShmTheme.yes,
-            duration: Duration(seconds: 2),
-          ),
-        );
+        showShmSnack(context, 'Stimme abgegeben', success: true);
         _openMap(question);
       }
     } catch (e) {
-      final msg = e.toString().replaceAll('Exception: ', '');
-      if (msg.contains('already_voted')) {
-        await StorageService.markQuestionVoted(
-          question['id'],
-          question['title'] ?? '',
-          question['category'] ?? '',
-        );
-        if (mounted) {
-          setState(() => _votedIds = {..._votedIds, question['id']});
-          _openMap(question);
-        }
-      } else if (msg.contains('unknown_plz')) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Postleitzahl nicht erkannt. Bitte Profil aktualisieren.'),
-              backgroundColor: ShmTheme.no,
-            ),
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Fehler: $msg'), backgroundColor: ShmTheme.no),
-          );
-        }
+      final code = e.toString();
+      if (code.contains('already_voted')) {
+        await _markVoted(question, null);
+        if (mounted) _openMap(question);
+      } else if (mounted) {
+        showShmSnack(context, errorMessage(e), error: true);
       }
+    }
+  }
+
+  Future<void> _markVoted(
+      Map<String, dynamic> question, String? answer) async {
+    await StorageService.markQuestionVoted(
+      question['id'],
+      question['title'] ?? '',
+      question['category'] ?? '',
+      answer: answer,
+    );
+    if (mounted) {
+      setState(() =>
+          _myAnswers = {..._myAnswers, question['id'] as String: answer ?? ''});
     }
   }
 
@@ -195,7 +205,9 @@ class _FeedTabState extends State<_FeedTab> {
   }
 
   List<String> get _categories {
-    final cats = _questions.map((q) => q['category'] as String? ?? '').toSet().toList()..sort();
+    final cats =
+        _questions.map((q) => q['category'] as String? ?? '').toSet().toList()
+          ..sort();
     return ['Alle', ...cats.where((c) => c.isNotEmpty)];
   }
 
@@ -223,17 +235,16 @@ class _FeedTabState extends State<_FeedTab> {
             ? TextField(
                 controller: _searchController,
                 autofocus: true,
-                style: const TextStyle(color: Colors.white),
-                cursorColor: Colors.white70,
                 decoration: const InputDecoration(
                   hintText: 'Frage suchen …',
-                  hintStyle: TextStyle(color: Colors.white54),
                   border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
                 ),
                 onChanged: (v) => setState(() => _searchQuery = v),
               )
-            : const Text('SocialHeadmap',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            : const Text('SocialHeadmap'),
         actions: [
           IconButton(
             icon: Icon(_searchActive ? Icons.close : Icons.search),
@@ -252,7 +263,7 @@ class _FeedTabState extends State<_FeedTab> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? _ErrorView(error: _error!, onRetry: _load)
+              ? ErrorView(error: _error!, onRetry: _load)
               : RefreshIndicator(
                   onRefresh: _load,
                   child: CustomScrollView(
@@ -260,7 +271,10 @@ class _FeedTabState extends State<_FeedTab> {
                       SliverToBoxAdapter(
                         child: _HeroBanner(
                           totalQuestions: _questions.length,
-                          votedCount: _votedIds.length,
+                          votedCount: _questions
+                              .where(
+                                  (q) => _myAnswers.containsKey(q['id']))
+                              .length,
                           categoryCount: _categories.length - 1,
                         ),
                       ),
@@ -268,14 +282,18 @@ class _FeedTabState extends State<_FeedTab> {
                         child: _CategoryBar(
                           categories: _categories,
                           selected: _selectedCategory,
-                          onSelect: (c) => setState(() => _selectedCategory = c),
+                          onSelect: (c) =>
+                              setState(() => _selectedCategory = c),
                         ),
                       ),
                       if (_filtered.isEmpty)
                         const SliverFillRemaining(
-                          child: Center(
-                            child: Text('Keine Fragen gefunden.',
-                                style: TextStyle(color: Colors.black54)),
+                          hasScrollBody: false,
+                          child: EmptyState(
+                            icon: Icons.search_off,
+                            title: 'Keine Fragen gefunden',
+                            subtitle:
+                                'Versuche eine andere Kategorie oder Suche.',
                           ),
                         )
                       else
@@ -283,7 +301,9 @@ class _FeedTabState extends State<_FeedTab> {
                           delegate: SliverChildBuilderDelegate(
                             (ctx, i) {
                               final q = _filtered[i];
-                              final voted = _votedIds.contains(q['id']);
+                              final voted =
+                                  _myAnswers.containsKey(q['id']);
+                              final answer = _myAnswers[q['id']];
                               return QuestionCard(
                                 title: q['title'] ?? '',
                                 description: q['description'],
@@ -293,14 +313,20 @@ class _FeedTabState extends State<_FeedTab> {
                                     ? List<String>.from(q['options'])
                                     : null,
                                 isVoted: voted,
-                                onAnswer: voted ? null : (a) => _onAnswer(q, a),
-                                onViewMap: voted ? () => _openMap(q) : null,
+                                myAnswer: (answer?.isNotEmpty ?? false)
+                                    ? answer
+                                    : null,
+                                onAnswer:
+                                    voted ? null : (a) => _onAnswer(q, a),
+                                onViewMap:
+                                    voted ? () => _openMap(q) : null,
                               );
                             },
                             childCount: _filtered.length,
                           ),
                         ),
-                      const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                      const SliverToBoxAdapter(
+                          child: SizedBox(height: ShmTheme.gapXl)),
                     ],
                   ),
                 ),
@@ -323,58 +349,59 @@ class _HeroBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      padding: const EdgeInsets.fromLTRB(
+          ShmTheme.gapL, ShmTheme.gapM, ShmTheme.gapL, ShmTheme.gapS),
       child: Container(
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF0D47A1), Color(0xFF1565C0), Color(0xFF1E88E5)],
+          gradient: LinearGradient(
+            colors: isDark
+                ? const [Color(0xFF14304F), Color(0xFF1A4470)]
+                : const [Color(0xFF0D47A1), Color(0xFF1E88E5)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(ShmTheme.radiusL),
         ),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(ShmTheme.gapL + 2),
         child: Stack(
           children: [
-            // Dekorations-Icon
             Positioned(
               right: 0,
               top: 0,
               child: Icon(
                 Icons.how_to_vote_outlined,
-                size: 60,
+                size: 64,
                 color: Colors.white.withOpacity(0.12),
               ),
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'SOCIALHEADMAP · DEINE STIMME',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white.withOpacity(0.70),
-                    letterSpacing: 0.8,
-                  ),
-                ),
-                const SizedBox(height: 4),
                 const Text(
                   'Was denkt Deutschland?',
                   style: TextStyle(
-                    fontSize: 17,
+                    fontSize: 19,
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: ShmTheme.gapXs),
+                Text(
+                  'Stimme anonym ab und sieh die Ergebnisse auf der Karte.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.white.withOpacity(0.75),
+                  ),
+                ),
+                const SizedBox(height: ShmTheme.gapL),
                 Row(
                   children: [
                     _Stat(value: '$totalQuestions', label: 'Aktive Fragen'),
-                    const SizedBox(width: 20),
+                    const SizedBox(width: ShmTheme.gapXl),
                     _Stat(value: '$categoryCount', label: 'Kategorien'),
-                    const SizedBox(width: 20),
+                    const SizedBox(width: ShmTheme.gapXl),
                     _Stat(value: '$votedCount', label: 'Beantwortet'),
                   ],
                 ),
@@ -399,11 +426,13 @@ class _Stat extends StatelessWidget {
       children: [
         Text(value,
             style: const TextStyle(
-                fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: Colors.white)),
         Text(label,
             style: TextStyle(
-                fontSize: 10,
-                color: Colors.white.withOpacity(0.70),
+                fontSize: 11.5,
+                color: Colors.white.withOpacity(0.75),
                 fontWeight: FontWeight.w500)),
       ],
     );
@@ -425,72 +454,23 @@ class _CategoryBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 44,
-      color: const Color(0xFFF2F2F7),
+    return SizedBox(
+      height: 52,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: const EdgeInsets.symmetric(
+            horizontal: ShmTheme.gapL, vertical: ShmTheme.gapS),
         itemCount: categories.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 7),
+        separatorBuilder: (_, __) => const SizedBox(width: ShmTheme.gapS),
         itemBuilder: (ctx, i) {
           final cat = categories[i];
-          final isSelected = cat == selected;
-          return GestureDetector(
-            onTap: () => onSelect(cat),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-              decoration: BoxDecoration(
-                color: isSelected ? ShmTheme.primary : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: isSelected
-                    ? null
-                    : Border.all(color: const Color(0xFFD1D1D6), width: 1.5),
-              ),
-              child: Text(
-                cat,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: isSelected ? Colors.white : const Color(0xFF3A3A3C),
-                ),
-              ),
-            ),
+          return ChoiceChip(
+            label: Text(cat),
+            selected: cat == selected,
+            showCheckmark: false,
+            onSelected: (_) => onSelect(cat),
           );
         },
-      ),
-    );
-  }
-}
-
-// ── Error View ───────────────────────────────────────────────────────────────
-
-class _ErrorView extends StatelessWidget {
-  final String error;
-  final VoidCallback onRetry;
-
-  const _ErrorView({required this.error, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(error, textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.black54)),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Erneut versuchen'),
-            ),
-          ],
-        ),
       ),
     );
   }
