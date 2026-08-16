@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../services/storage_service.dart';
-import '../services/auth_service.dart';
+import '../constants.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
+import '../services/storage_service.dart';
 import '../theme.dart';
-import 'legal_screen.dart';
+import '../widgets/common.dart';
 import 'auth_screen.dart';
+import 'legal_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -21,13 +23,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _provider;
   bool _loading = true;
 
-  static const _ageGroups = [
-    ('A', '18–29 Jahre'),
-    ('B', '30–39 Jahre'),
-    ('C', '40–49 Jahre'),
-    ('D', '50–59 Jahre'),
-    ('E', '60+ Jahre'),
-  ];
+  static final _plzRegex = RegExp(r'^\d{5}$');
 
   @override
   void initState() {
@@ -36,16 +32,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _load() async {
-    final profile  = await StorageService.getUserProfile();
+    final profile = await StorageService.getUserProfile();
     final username = await AuthService.getUsername();
     final provider = await AuthService.getProvider();
     if (mounted) {
       setState(() {
-        _plz      = profile['plz'];
+        _plz = profile['plz'];
         _ageGroup = profile['age_group'];
         _username = username;
         _provider = provider;
-        _loading  = false;
+        _loading = false;
       });
     }
   }
@@ -62,7 +58,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Abbrechen')),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: ShmTheme.no),
+            style: FilledButton.styleFrom(
+                backgroundColor: ctx.shm.no, foregroundColor: ctx.shm.onNo),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Abmelden'),
           ),
@@ -73,22 +70,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final jwt = await AuthService.getJwt();
     if (jwt != null) {
-      try { await ApiService.logoutJwt(jwt); } catch (_) {}
+      try {
+        await ApiService.logoutJwt(jwt);
+      } catch (_) {}
     }
     await AuthService.logout();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const AuthScreen()), (_) => false);
+          MaterialPageRoute(builder: (_) => const AuthScreen()), (_) => false);
     }
   }
 
-  String _ageLabel(String? key) {
-    if (key == null) return '–';
-    return _ageGroups.firstWhere(
-      (e) => e.$1 == key,
-      orElse: () => (key, key),
-    ).$2;
-  }
+  String _ageLabel(String? key) =>
+      key == null ? '–' : (ageLabels[key] ?? key);
 
   Future<void> _editPlz() async {
     final ctrl = TextEditingController(text: _plz ?? '');
@@ -101,17 +95,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
           keyboardType: TextInputType.number,
           maxLength: 5,
           autofocus: true,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           decoration: const InputDecoration(
             labelText: 'PLZ',
-            hintText: 'z.B. 80331',
+            hintText: 'z. B. 80331',
+            counterText: '',
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Abbrechen')),
           FilledButton(
             onPressed: () {
               final v = ctrl.text.trim();
-              if (v.length >= 4) Navigator.pop(ctx, v);
+              if (_plzRegex.hasMatch(v)) Navigator.pop(ctx, v);
             },
             child: const Text('Speichern'),
           ),
@@ -119,7 +117,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     if (result != null) {
-      await StorageService.saveUserProfile(ageGroup: _ageGroup ?? 'B', plz: result);
+      await StorageService.saveUserProfile(
+          ageGroup: _ageGroup ?? 'B', plz: result);
       await _load();
     }
   }
@@ -133,16 +132,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
           title: const Text('Altersgruppe ändern'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
-            children: _ageGroups.map((e) => RadioListTile<String>(
-              value: e.$1,
-              groupValue: selected,
-              title: Text(e.$2),
-              onChanged: (v) => setS(() => selected = v!),
-              dense: true,
-            )).toList(),
+            children: [
+              for (final entry in ageLabels.entries)
+                RadioListTile<String>(
+                  value: entry.key,
+                  groupValue: selected,
+                  title: Text('${entry.value} Jahre'),
+                  onChanged: (v) => setS(() => selected = v!),
+                  dense: true,
+                ),
+            ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Abbrechen')),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, selected),
               child: const Text('Speichern'),
@@ -152,210 +156,175 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     if (result != null) {
-      await StorageService.saveUserProfile(ageGroup: result, plz: _plz ?? '');
+      await StorageService.saveUserProfile(
+          ageGroup: result, plz: _plz ?? '');
       await _load();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final shm = context.shm;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profil', style: TextStyle(fontWeight: FontWeight.bold)),
-      ),
+      appBar: AppBar(title: const Text('Profil')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(ShmTheme.gapL),
               children: [
                 // ── Account-Block (nur wenn per JWT eingeloggt) ──────────────
                 if (_username != null) ...[
-                  const _SectionHeader('Mein Account'),
+                  const SectionHeader('Mein Account'),
                   Card(
-                    elevation: 0,
-                    margin: EdgeInsets.zero,
-                    color: ShmTheme.primary.withOpacity(0.06),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: BorderSide(color: ShmTheme.primary.withOpacity(0.15)),
-                    ),
+                    color: scheme.primaryContainer.withOpacity(0.4),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
+                          horizontal: ShmTheme.gapL, vertical: ShmTheme.gapM),
                       child: Row(children: [
-                        const Icon(Icons.person_pin_outlined,
-                            color: ShmTheme.primary, size: 28),
-                        const SizedBox(width: 12),
-                        Expanded(child: Column(
+                        Icon(Icons.person_pin_outlined,
+                            color: scheme.primary, size: 28),
+                        const SizedBox(width: ShmTheme.gapM),
+                        Expanded(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                          Text(_username!,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 15,
-                                  fontFamily: 'monospace')),
-                          Text(
-                            _provider == 'google'
-                                ? 'Google-Account'
-                                : _provider == 'facebook'
-                                    ? 'Facebook-Account'
-                                    : 'E-Mail-Account',
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.grey.shade600),
+                              Text(_username!,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                      fontFamily: 'monospace')),
+                              Text(
+                                switch (_provider) {
+                                  'google' => 'Google-Account',
+                                  'facebook' => 'Facebook-Account',
+                                  _ => 'E-Mail-Account',
+                                },
+                                style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: scheme.onSurfaceVariant),
+                              ),
+                            ],
                           ),
-                        ])),
+                        ),
                         IconButton(
-                          icon: const Icon(Icons.copy_outlined,
-                              size: 18, color: ShmTheme.primary),
+                          icon: Icon(Icons.copy_outlined,
+                              size: 18, color: scheme.primary),
                           tooltip: 'Kopieren',
                           onPressed: () {
                             Clipboard.setData(
                                 ClipboardData(text: _username!));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text('Username kopiert'),
-                                  duration: Duration(seconds: 2)),
-                            );
+                            showShmSnack(context, 'Username kopiert');
                           },
                         ),
                       ]),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: ShmTheme.gapXl),
                 ],
-                const _SectionHeader('Meine Angaben'),
+                const SectionHeader('Meine Angaben'),
                 Card(
-                  elevation: 1,
-                  margin: EdgeInsets.zero,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    side: BorderSide(color: Colors.grey.shade200),
-                  ),
+                  clipBehavior: Clip.antiAlias,
                   child: Column(
                     children: [
                       ListTile(
-                        leading: const Icon(Icons.location_on_outlined,
-                            color: ShmTheme.primary),
+                        leading: Icon(Icons.location_on_outlined,
+                            color: scheme.primary),
                         title: const Text('Postleitzahl'),
-                        subtitle: Text(_plz?.isNotEmpty == true ? _plz! : 'Nicht angegeben'),
-                        trailing: const Icon(Icons.edit_outlined, size: 18, color: Colors.grey),
+                        subtitle: Text(_plz?.isNotEmpty == true
+                            ? _plz!
+                            : 'Nicht angegeben'),
+                        trailing: Icon(Icons.edit_outlined,
+                            size: 18, color: scheme.outline),
                         onTap: _editPlz,
                       ),
-                      Divider(height: 1, indent: 56, color: Colors.grey.shade200),
+                      const Divider(height: 1, indent: 56),
                       ListTile(
-                        leading: const Icon(Icons.person_outline,
-                            color: ShmTheme.primary),
+                        leading: Icon(Icons.person_outline,
+                            color: scheme.primary),
                         title: const Text('Altersgruppe'),
                         subtitle: Text(_ageLabel(_ageGroup)),
-                        trailing: const Icon(Icons.edit_outlined, size: 18, color: Colors.grey),
+                        trailing: Icon(Icons.edit_outlined,
+                            size: 18, color: scheme.outline),
                         onTap: _editAgeGroup,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
-                const _SectionHeader('Datenschutz & Anonymität'),
+                const SizedBox(height: ShmTheme.gapXl),
+                const SectionHeader('Datenschutz & Anonymität'),
                 Card(
-                  elevation: 0,
-                  margin: EdgeInsets.zero,
-                  color: Colors.blue.shade50,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    side: BorderSide(color: Colors.blue.shade100),
-                  ),
+                  color: scheme.secondaryContainer.withOpacity(0.35),
                   child: Padding(
                     padding: const EdgeInsets.all(14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(children: [
-                          const Icon(Icons.shield_outlined, size: 18, color: ShmTheme.primary),
-                          const SizedBox(width: 8),
-                          Text('Wie wir deine Daten schützen',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.blue.shade900)),
+                          Icon(Icons.shield_outlined,
+                              size: 18, color: scheme.primary),
+                          const SizedBox(width: ShmTheme.gapS),
+                          const Text('Wie wir deine Daten schützen',
+                              style:
+                                  TextStyle(fontWeight: FontWeight.w700)),
                         ]),
-                        const SizedBox(height: 8),
-                        ...[
+                        const SizedBox(height: ShmTheme.gapS),
+                        for (final s in const [
                           'Deine PLZ wird serverseitig zu einer Region umgewandelt und sofort verworfen.',
-                          'Abstimmungen sind nur per Geräte-ID verknüpft – kein Name, keine E-Mail.',
-                          'Ergebnisse sind erst ab 10 Stimmen pro Region sichtbar.',
-                        ].map((s) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('· ', style: TextStyle(color: Colors.blue)),
-                              Expanded(child: Text(s, style: const TextStyle(fontSize: 13, color: Colors.black87))),
-                            ],
+                          'Abstimmungen sind nur per Geräte-ID verknüpft — kein Name, keine E-Mail.',
+                          'Ergebnisse siehst du erst, nachdem du selbst abgestimmt hast.',
+                        ])
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('· ',
+                                    style:
+                                        TextStyle(color: scheme.primary)),
+                                Expanded(
+                                    child: Text(s,
+                                        style: const TextStyle(
+                                            fontSize: 13, height: 1.35))),
+                              ],
+                            ),
                           ),
-                        )),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
-                const _SectionHeader('Rechtliches'),
+                const SizedBox(height: ShmTheme.gapXl),
+                const SectionHeader('Rechtliches'),
                 Card(
-                  elevation: 1,
-                  margin: EdgeInsets.zero,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    side: BorderSide(color: Colors.grey.shade200),
-                  ),
+                  clipBehavior: Clip.antiAlias,
                   child: ListTile(
-                    leading: const Icon(Icons.gavel_outlined, color: ShmTheme.primary),
+                    leading:
+                        Icon(Icons.gavel_outlined, color: scheme.primary),
                     title: const Text('Datenschutz & Impressum'),
-                    trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                    trailing:
+                        Icon(Icons.chevron_right, color: scheme.outline),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const LegalScreen()),
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: ShmTheme.gapXl),
 
                 // ── Logout (nur wenn JWT-User) ────────────────────────────
                 if (_username != null) ...[
-                  const _SectionHeader('Account-Aktionen'),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _logout,
-                      icon: const Icon(Icons.logout, color: Colors.red),
-                      label: const Text('Abmelden',
-                          style: TextStyle(color: Colors.red)),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        side: const BorderSide(color: Colors.red),
-                      ),
-                    ),
+                  const SectionHeader('Account-Aktionen'),
+                  OutlinedButton.icon(
+                    onPressed: _logout,
+                    icon: Icon(Icons.logout, color: shm.no),
+                    label: Text('Abmelden',
+                        style: TextStyle(color: shm.no)),
+                    style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: shm.no)),
                   ),
                 ],
                 const SizedBox(height: 32),
               ],
             ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final String text;
-  const _SectionHeader(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, left: 2),
-      child: Text(
-        text.toUpperCase(),
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.8,
-          color: Colors.grey.shade500,
-        ),
-      ),
     );
   }
 }

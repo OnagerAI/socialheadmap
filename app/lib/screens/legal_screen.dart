@@ -7,11 +7,11 @@ class LegalScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Datenschutz & Impressum')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+      body: const SingleChildScrollView(
+        padding: EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
+          children: [
             Text('Impressum', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             SizedBox(height: 8),
             Text('Angaben gemäß § 5 TMG\n\nSocialHeadmap\nBetreiber: Artur Shachnev\nDeutschland\n\nKontakt: info@socialheadmap.de'),
@@ -46,11 +46,11 @@ class LegalScreen extends StatelessWidget {
               '• E-Mail-Hash (optional): Art. 6(1)(a) DSGVO',
             ),
             SizedBox(height: 16),
-            Text('4. Quorum-Schutz', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text('4. Fair-Play-Prinzip', style: TextStyle(fontWeight: FontWeight.bold)),
             SizedBox(height: 4),
             Text(
-              'Ergebnisse eines Landkreises werden erst angezeigt, wenn mindestens 10 Stimmen aus dieser Region vorliegen. '
-              'Landkreise mit weniger Stimmen werden grau (keine Daten) dargestellt.',
+              'Ergebnisse einer Frage sind erst sichtbar, nachdem du selbst abgestimmt hast — '
+              'das wird auch serverseitig durchgesetzt. Regionale Ergebnisse werden ab der ersten Stimme angezeigt.',
             ),
             SizedBox(height: 16),
             Text('5. Deine Rechte', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -72,7 +72,7 @@ class LegalScreen extends StatelessWidget {
               'Da alle Stimmen vollständig anonym sind, können bereits abgegebene Stimmen nicht nachträglich entfernt werden.',
             ),
             SizedBox(height: 32),
-            Text('Stand: Mai 2026', style: TextStyle(color: Colors.black38, fontSize: 12)),
+            Text('Stand: Juli 2026', style: TextStyle(color: Colors.grey, fontSize: 12)),
           ],
         ),
       ),

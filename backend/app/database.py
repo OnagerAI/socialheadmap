@@ -101,3 +101,12 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_sessions_jti ON sessions(jti);
             CREATE INDEX IF NOT EXISTS idx_magic_tokens_token ON magic_tokens(token);
         """)
+        # Nachträgliche Spalten (executescript kann bestehende Tabellen nicht ändern)
+        for stmt in (
+            "ALTER TABLE questions ADD COLUMN starts_at TEXT",
+            "ALTER TABLE questions ADD COLUMN ends_at TEXT",
+        ):
+            try:
+                conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass  # Spalte existiert bereits

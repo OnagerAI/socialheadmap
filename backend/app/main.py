@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.database import init_db
-from app.routers import auth, votes, questions, stats
+from app.routers import auth, votes, questions, stats, admin_stats
 
 app = FastAPI(title="SocialHeadmap API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -18,6 +18,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(votes.router)
 app.include_router(questions.router)
+app.include_router(admin_stats.router)
 app.include_router(stats.router)
 
 

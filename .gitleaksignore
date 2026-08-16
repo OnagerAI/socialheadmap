@@ -1,0 +1,6 @@
+# Geprüfte Fehlalarme (2026-07-18): CocoaPods-Checksummen, Firebase-Client-Keys, Test-Dummies
+343ea068923a667641aab9e6f16b7d535c43cdf5:app/ios/Podfile.lock:generic-api-key:117
+343ea068923a667641aab9e6f16b7d535c43cdf5:app/ios/Podfile.lock:generic-api-key:124
+343ea068923a667641aab9e6f16b7d535c43cdf5:app/ios/Podfile.lock:generic-api-key:129
+0cb6c3c2629eae0128b749b5f2766cf925a2a041:app/android/app/google-services.json:gcp-api-key:23
+0cb6c3c2629eae0128b749b5f2766cf925a2a041:app/android/app/google-services.json:gcp-api-key:52

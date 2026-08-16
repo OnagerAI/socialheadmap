@@ -9,7 +9,7 @@ from functools import lru_cache
 
 _MAPPING_FILE = os.path.join(os.path.dirname(__file__), "plz_landkreis.json")
 
-QUORUM = 10  # Mindest-Stimmen für Anzeige
+QUORUM = 1  # Mindest-Stimmen für Anzeige — Ergebnisse ab der ersten Stimme
 
 
 @lru_cache(maxsize=1)
